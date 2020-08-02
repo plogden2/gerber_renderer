@@ -5,15 +5,36 @@ from svgwrite import cm, mm, inch
 svg = svgwrite.Drawing(filename='test.svg', debug=True)
 
 # open outline file
-outline_file = open('./testgerber/Gerber_Drill_PTH.DRL', 'r').read()
+outline_file = open('./testgerber/Gerber_BoardOutline.GKO', 'r').read()
 
 # set units
-unit = mm
+unit = 'mm'
 if(outline_file.find('G70') != -1):
-    unit = inch
+    unit = 'in'
 
 # get board dimensions
-# width =
+# get width
+width = 0
+pointer = outline_file.find('G01X')+3
+while(pointer != -1):
+    temp = float(outline_file[pointer+1: outline_file.find('Y', pointer)])/1000
+    if(temp > width):
+        width = temp
+    pointer = outline_file.find('X', pointer+1)
+# get height
+height = 0
+pointer = outline_file.find('Y', outline_file.find('G01X'))
+while(pointer != -1):
+    y_len = 1
+    while(str.isnumeric(outline_file[pointer+1+y_len])):
+        y_len += 1
+
+    temp = float(outline_file[pointer+1: pointer+1+y_len])/1000
+    if(temp > height):
+        height = temp
+    pointer = outline_file.find('Y', pointer+1)
+print('Board Dimensions: ' + str(width) +
+      ' x ' + str(height) + ' ' + str(unit))
 
 
 # open drill file
@@ -35,7 +56,6 @@ while(True):
         while(str.isnumeric(drill_file[diameter+4+d_len]) or drill_file[diameter+4+d_len] == '.'):
             d_len += 1
         diameter = float(drill_file[diameter+4: diameter+4+d_len])
-        print(d_len)
         next_tool = drill_file.find('T', curr_holes)
         curr_x = drill_file.find('X', curr_holes)
         curr_y = drill_file.find('Y', curr_x)
@@ -47,8 +67,8 @@ while(True):
                 y_len += 1
             hole_x = float(drill_file[curr_x+1:curr_y])/1000
             hole_y = float(drill_file[curr_y+1: curr_y+1+y_len])/1000
-            svg.add(svg.circle(center=(hole_x*unit, hole_y*unit),
-                               r=diameter/2*unit, fill='black'))
+            svg.add(svg.circle(center=(str(hole_x)+unit, str(hole_y)+unit),
+                               r=str(diameter/2)+unit, fill='black'))
             curr_x = drill_file.find('X', curr_y)
             curr_y = drill_file.find('Y', curr_x)
 
@@ -70,11 +90,11 @@ while(True):
         # find X and Y coords
         curr_x = silk_file.find('X', index)
         curr_y = silk_file.find('Y', index)
-        curr_x = float(silk_file[curr_x+1:curr_y])/1000 * unit
+        curr_x = str(float(silk_file[curr_x+1:curr_y])/1000) + unit
         y_len = 1
         while(str.isnumeric(silk_file[curr_y+1+y_len])):
             y_len += 1
-        curr_y = float(silk_file[curr_y+1: curr_y+1+y_len])/1000 * unit
+        curr_y = str(float(silk_file[curr_y+1: curr_y+1+y_len])/1000) + unit
 
         # get D code
         D_code = silk_file.find('D', index)
