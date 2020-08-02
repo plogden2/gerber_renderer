@@ -21,31 +21,36 @@ drill_file = open('./testgerber/Gerber_Drill_PTH.DRL', 'r').read()
 
 # draw drill holes
 print('Drilling Holes')
-tool_bool = True
 tool_num = 1
-while(tool_bool):
-    # get index of tool diameter
-    index = drill_file.find('T0'+str(tool_num)+'C')+4
-    if(index == 3):
-        tool_bool = False
+while(True):
+    # get diameter index of current tool
+    diameter = drill_file.find('T0'+str(tool_num)+'C')
+    if(diameter == -1):
+        break
     else:
-        tool_diameter = float(drill_file[index:index+5])
-        hole_index = drill_file.find('T0'+str(tool_num), index+4)
-        next_tool_holes = drill_file.find('T0'+str(tool_num+1), hole_index)
-        next_x = drill_file.find('X', hole_index+1)
+        # draw all holes for current tool
+        curr_holes = drill_file.find('T0'+str(tool_num), diameter+4)+3
+        # get diameter of current tool
+        d_len = 0
+        while(str.isnumeric(drill_file[diameter+4+d_len]) or drill_file[diameter+4+d_len] == '.'):
+            d_len += 1
+        diameter = float(drill_file[diameter+4: diameter+4+d_len])
+        print(d_len)
+        next_tool = drill_file.find('T', curr_holes)
+        curr_x = drill_file.find('X', curr_holes)
+        curr_y = drill_file.find('Y', curr_x)
+
         # find and draw circles at hole coords
-        while(next_x < next_tool_holes or (next_tool_holes == -1 and next_x != -1)):
-            hole_index = next_x
-            y_index = drill_file.find('Y', hole_index)
-            next_x = drill_file.find('X', y_index)
-            if(next_x != -1):
-                if(drill_file.find('T', y_index) < next_x and drill_file.find('T', y_index) != -1):
-                    next_x = drill_file.find('T', y_index)
-                # draw holes for metric
-                hole_x = float(drill_file[hole_index+1:y_index])/1000
-                hole_y = float(drill_file[y_index+1:next_x-1])/1000
-                svg.add(svg.circle(center=(hole_x*unit, hole_y*unit),
-                                   r=tool_diameter/2*unit, fill='black'))
+        while(curr_x < next_tool or (next_tool == -1 and curr_x != -1)):
+            y_len = 1
+            while(str.isnumeric(drill_file[curr_y+1+y_len])):
+                y_len += 1
+            hole_x = float(drill_file[curr_x+1:curr_y])/1000
+            hole_y = float(drill_file[curr_y+1: curr_y+1+y_len])/1000
+            svg.add(svg.circle(center=(hole_x*unit, hole_y*unit),
+                               r=diameter/2*unit, fill='black'))
+            curr_x = drill_file.find('X', curr_y)
+            curr_y = drill_file.find('Y', curr_x)
 
         tool_num += 1
 svg.save()
