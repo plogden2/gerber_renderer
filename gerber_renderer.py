@@ -37,6 +37,73 @@ print('Board Dimensions: ' + str(width) +
       ' x ' + str(height) + ' ' + str(unit))
 
 
+# open top copper file
+copper_file = open('./testgerber/Gerber_TopLayer.GTL', 'r').read()
+
+# draw top silk screen
+print('Etching Copper')
+index = 0
+while(True):
+    # get index of tool diameter
+    index = copper_file.find('G01', index+1)
+    if(index == -1):
+        break
+    else:
+        # find X and Y coords
+        curr_x = copper_file.find('X', index)
+        curr_y = copper_file.find('Y', index)
+        curr_x = str(float(copper_file[curr_x+1:curr_y])/1000) + unit
+        y_len = 1
+        while(str.isnumeric(copper_file[curr_y+1+y_len])):
+            y_len += 1
+        curr_y = str(float(copper_file[curr_y+1: curr_y+1+y_len])/1000) + unit
+
+        # get D code
+        D_code = copper_file.find('D', index)
+        D_code = copper_file[D_code:D_code+3]
+        if(D_code == 'D01'):
+            # draw line
+            svg.add(svg.line(start=(prev_x, prev_y),
+                             end=(curr_x, curr_y), stroke='grey'))
+
+        prev_x = curr_x
+        prev_y = curr_y
+svg.save()
+
+
+# open top silk screen file
+silk_file = open('./testgerber/Gerber_TopSilkLayer.GTO', 'r').read()
+
+# draw top silk screen
+print('Curing Silk Screen')
+index = 0
+while(True):
+    # get index of tool diameter
+    index = silk_file.find('G01', index+1)
+    if(index == -1):
+        break
+    else:
+        # find X and Y coords
+        curr_x = silk_file.find('X', index)
+        curr_y = silk_file.find('Y', index)
+        curr_x = str(float(silk_file[curr_x+1:curr_y])/1000) + unit
+        y_len = 1
+        while(str.isnumeric(silk_file[curr_y+1+y_len])):
+            y_len += 1
+        curr_y = str(float(silk_file[curr_y+1: curr_y+1+y_len])/1000) + unit
+
+        # get D code
+        D_code = silk_file.find('D', index)
+        D_code = silk_file[D_code:D_code+3]
+        if(D_code == 'D01'):
+            # draw line
+            svg.add(svg.line(start=(prev_x, prev_y),
+                             end=(curr_x, curr_y), stroke='black'))
+
+        prev_x = curr_x
+        prev_y = curr_y
+svg.save()
+
 # open drill file
 drill_file = open('./testgerber/Gerber_Drill_PTH.DRL', 'r').read()
 
@@ -73,37 +140,4 @@ while(True):
             curr_y = drill_file.find('Y', curr_x)
 
         tool_num += 1
-svg.save()
-
-# open top silk screen file
-silk_file = open('./testgerber/Gerber_TopSilkLayer.GTO', 'r').read()
-
-# draw top silk screen
-print('Curing Silk Screen')
-index = 0
-while(True):
-    # get index of tool diameter
-    index = silk_file.find('G01', index+1)
-    if(index == -1):
-        break
-    else:
-        # find X and Y coords
-        curr_x = silk_file.find('X', index)
-        curr_y = silk_file.find('Y', index)
-        curr_x = str(float(silk_file[curr_x+1:curr_y])/1000) + unit
-        y_len = 1
-        while(str.isnumeric(silk_file[curr_y+1+y_len])):
-            y_len += 1
-        curr_y = str(float(silk_file[curr_y+1: curr_y+1+y_len])/1000) + unit
-
-        # get D code
-        D_code = silk_file.find('D', index)
-        D_code = silk_file[D_code:D_code+3]
-        if(D_code == 'D01'):
-            # draw line
-            svg.add(svg.line(start=(prev_x, prev_y),
-                             end=(curr_x, curr_y), stroke='black'))
-
-        prev_x = curr_x
-        prev_y = curr_y
 svg.save()
