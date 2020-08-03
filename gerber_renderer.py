@@ -2,7 +2,7 @@ import svgwrite
 from svgwrite import cm, mm, inch
 
 
-def draw_macros(file, drawing, color, scale=3.543307, fill='none'):
+def draw_macros(file, drawing, color, scale, fill='none'):
     index = 0
     # draw circles
     while(True):
@@ -70,6 +70,34 @@ def draw_macros(file, drawing, color, scale=3.543307, fill='none'):
                     # draw rect
                     drawing.add(drawing.rect(insert=(left_x, top_y), size=(
                         r_width, r_height), fill=color))
+        drawing.save()
+
+
+def area_fill(file, drawing, color, scale):
+    index = 0
+    while(True):
+        # get index of area fill instructions
+        index = file.find('G36', index+1)
+        if(index == -1):
+            break
+        else:
+            # find all coords and draw path
+            path = ''
+            while(True):
+                index = file.find('G', index+1)
+                if(file[index: index+3] != 'G01'):
+                    break
+                x = file.find('X', index)
+                y = file.find('Y', x)
+                x = str(float(file[x+1:y])/1000*scale)
+                y = str(
+                    float(file[y+1:file.find('D', y)])/1000*scale)
+                if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
+                    path += 'M' + x + ',' + str(float(y))
+                else:
+                    path += 'L' + x + ',' + str(float(y))
+
+            drawing.add(drawing.path(d=path, stroke='none', fill=color))
         drawing.save()
 
 
@@ -211,6 +239,8 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
     # draw silkscreen with macros
     draw_macros(file=silk_file, drawing=svg,
                 color='white', scale=3.543307)
+    area_fill(file=silk_file, drawing=svg,
+              color='white', scale=3.543307)
 
     # open drill file
     drill_file = open(drill, 'r').read()
