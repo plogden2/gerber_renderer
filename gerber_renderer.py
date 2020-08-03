@@ -1,3 +1,6 @@
+import zipfile
+import os
+import shutil
 import svgwrite
 from svgwrite import cm, mm, inch
 
@@ -106,7 +109,7 @@ def area_fill(file, drawing, color, scale):
         drawing.save()
 
 
-def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
+def render_files(outline, drill, copper, mask, silk='', filename='pcb.svg', verbose=False):
     # initialize svg
     svg = svgwrite.Drawing(filename=filename, debug=True)
 
@@ -142,18 +145,20 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
         if(temp > height):
             height = temp
         pointer = outline_file.find('Y', pointer+1)
-    print('Board Dimensions: ' + str(width) +
-          ' x ' + str(height) + ' ' + str(unit))
+    if(verbose):
+        print('Board Dimensions: ' + str(width) +
+              ' x ' + str(height) + ' ' + str(unit))
 
     # draw background rectangle
     svg.add(svg.rect(insert=(0, 0), size=(
-        str(width*scale), str(height*scale)), fill='#2ea64e'))
+        str(width*scale), str(height*scale)), fill='green'))
 
     # open copper file
     copper_file = open(copper, 'r').read()
 
     # draw copper layer
-    print('Etching Copper')
+    if(verbose):
+        print('Etching Copper')
     draw_macros(file=copper_file, drawing=svg,
                 color='darkgreen', scale=3.543307)
     # index = 0
@@ -189,27 +194,31 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
     mask_file = open(mask, 'r').read()
 
     # draw top solder mask
-    print('Applying Solder Mask')
+    if(verbose):
+        print('Applying Solder Mask')
 
     area_fill(file=mask_file, drawing=svg, color='grey', scale=3.543307)
     draw_macros(file=mask_file, drawing=svg, color='grey', scale=3.543307)
 
-    # open top silk screen file
-    silk_file = open(silk, 'r').read()
+    if(silk):
+        # open top silk screen file
+        silk_file = open(silk, 'r').read()
 
-    # draw top silk screen
-    print('Curing Silk Screen')
-    # draw silkscreen with macros
-    draw_macros(file=silk_file, drawing=svg,
-                color='white', scale=3.543307)
-    area_fill(file=silk_file, drawing=svg,
-              color='white', scale=3.543307)
+        # draw top silk screen
+        if(verbose):
+            print('Curing Silk Screen')
+        # draw silkscreen with macros
+        draw_macros(file=silk_file, drawing=svg,
+                    color='white', scale=3.543307)
+        area_fill(file=silk_file, drawing=svg,
+                  color='white', scale=3.543307)
 
     # open drill file
     drill_file = open(drill, 'r').read()
 
     # draw drill holes
-    print('Drilling Holes')
+    if(verbose):
+        print('Drilling Holes')
     tool_num = 1
     while(True):
         # get diameter index of current tool
@@ -244,9 +253,61 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
             tool_num += 1
     svg.save()
 
+# extracts and sorts a zipped gerber file
 
-render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_TopLayer.GTL',
-            './testgerber/Gerber_TopSolderMaskLayer.GTS', './testgerber/Gerber_TopSilkLayer.GTO', './testgerber/Gerber_Drill_PTH.DRL', 'top.svg')
 
-render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_BottomLayer.GBL',
-            './testgerber/Gerber_BottomSolderMaskLayer.GBS', './testgerber/Gerber_BottomSilkLayer.GBO', './testgerber/Gerber_Drill_PTH.DRL')
+def render(file, verbose=False):
+    # extracting files
+    if(verbose):
+        print('Extracting Files')
+    shutil.rmtree('./gerber_files')
+    with zipfile.ZipFile(file, 'r') as zipped:
+        zipped.extractall('./gerber_files')
+
+    drill = ''
+    outline = ''
+    t_copper = ''
+    t_mask = ''
+    t_silk = ''
+    b_copper = ''
+    b_mask = ''
+    b_silk = ''
+
+    # RS274X name schemes
+    for filename in os.listdir('./gerber_files'):
+        if(not drill and filename[-3:].upper() == 'DRL'):
+            drill = './gerber_files/'+filename
+        elif(not outline and filename[-3:].upper() == 'GKO'):
+            outline = './gerber_files/'+filename
+        elif(not t_copper and filename[-3:].upper() == 'GTL'):
+            t_copper = './gerber_files/'+filename
+        elif(not t_mask and filename[-3:].upper() == 'GTS'):
+            t_mask = './gerber_files/'+filename
+        elif(not t_silk and filename[-3:].upper() == 'GTO'):
+            t_silk = './gerber_files/'+filename
+        elif(not b_copper and filename[-3:].upper() == 'GBL'):
+            b_copper = './gerber_files/'+filename
+        elif(not b_mask and filename[-3:].upper() == 'GBS'):
+            b_mask = './gerber_files/'+filename
+        elif(not b_silk and filename[-3:].upper() == 'GBO'):
+            b_silk = './gerber_files/'+filename
+
+    # render top
+    if(drill and outline and t_copper and t_mask):
+        if(verbose):
+            print('Rendring Top')
+        render_files(outline=outline, drill=drill, copper=t_copper,
+                     mask=t_mask, silk=t_silk, filename='top.svg', verbose=verbose)
+    else:
+        print('Error identifying files')
+
+    if(drill and outline and b_copper and b_mask):
+        if(verbose):
+            print('Rendering Bottom')
+        render_files(outline=outline, drill=drill, copper=b_copper,
+                     mask=b_mask, silk=b_silk, filename='bottom.svg', verbose=verbose)
+    elif(verbose):
+        print('No Bottom Files')
+
+
+render('gerber2.zip', verbose=True)
