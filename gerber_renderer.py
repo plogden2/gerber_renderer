@@ -183,52 +183,7 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
 
     # draw top solder mask
     print('Applying Solder Mask')
-    # draw rectangles
-    while(True):
-        # get index of first rectangle
-        index = mask_file.find('G36', index+1)
-        if(index == -1):
-            break
-        else:
-            # find X and Y coords of top left
-            left_x = mask_file.find('X', index)
-            top_y = mask_file.find('Y', index)
-
-            left_x = float(mask_file[left_x+1:top_y])
-
-            # get width
-            r_width = 0
-            tmp_x = top_y
-            while(r_width == 0):
-                tmp_x = mask_file.find('X', tmp_x+1)
-                if(float(mask_file[tmp_x+1: mask_file.find('Y', tmp_x)]) > left_x):
-                    r_width = str(
-                        (float(mask_file[tmp_x+1: mask_file.find('Y', tmp_x)])-left_x)/1000 * scale)
-            left_x = str(left_x/1000 * scale)
-
-            y_len = 1
-            while(str.isnumeric(mask_file[top_y+1+y_len])):
-                y_len += 1
-            top_y = float(mask_file[top_y+1: top_y+1+y_len])
-
-            # get height
-            r_height = 0
-            tmp_y = mask_file.find('Y', index)
-            while(r_height == 0):
-                tmp_y = mask_file.find('Y', tmp_y+1)
-                y_len = 1
-                while(str.isnumeric(mask_file[tmp_y+1+y_len])):
-                    y_len += 1
-                if(float(mask_file[tmp_y+1: tmp_y+1+y_len]) > top_y):
-                    r_height = str(
-                        (float(mask_file[tmp_y+1:tmp_y+1+y_len])-top_y)/1000*scale)
-
-            top_y = str(top_y/1000 * scale)
-
-            # draw rect
-            svg.add(svg.rect(insert=(left_x, top_y), size=(
-                r_width, r_height), fill='grey'))
-
+    area_fill(file=mask_file, drawing=svg, color='grey', scale=3.543307)
     draw_macros(file=mask_file, drawing=svg, color='grey', scale=3.543307)
 
     # open top silk screen file
