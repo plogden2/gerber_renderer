@@ -27,7 +27,9 @@ def draw_macros(file, drawing, color, scale, fill='none'):
                 while(True):
                     p_index = file.find('G', p_index+1)
                     if(file[p_index: p_index+3] != 'G01'):
-                        break
+                        p_index = file.find('D' + c_id, p_index)
+                        if(p_index == -1):
+                            break
                     x = file.find('X', p_index)
                     y = file.find('Y', x)
                     x = str(float(file[x+1:y])/1000*scale)
@@ -35,13 +37,14 @@ def draw_macros(file, drawing, color, scale, fill='none'):
                         float(file[y+1:file.find('D', y)])/1000*scale)
                     if(file[file.find('D', p_index):file.find('D', p_index)+3] == 'D02'):
                         path += 'M' + x + ',' + str(float(y))
-                    else:
+                    elif (file[file.find('D', p_index):file.find('D', p_index)+3] == 'D01'):
                         path += 'L' + x + ',' + str(float(y))
 
                     drawing.add(drawing.circle(center=(x, y),
                                                r=radius, fill=color))
-                drawing.add(drawing.path(d=path, stroke=color,
-                                         stroke_width=float(radius)*2, fill=fill))
+                if(path):
+                    drawing.add(drawing.path(d=path, stroke=color,
+                                             stroke_width=float(radius)*2, fill=fill))
                 # draw rectangles
             else:
                 r_width = str(float(file[file.find(
@@ -56,7 +59,9 @@ def draw_macros(file, drawing, color, scale, fill='none'):
                 while(True):
                     p_index = file.find('G', p_index+1)
                     if(file[p_index: p_index+3] != 'G01'):
-                        break
+                        p_index = file.find('D' + r_id, p_index)
+                        if(p_index == -1):
+                            break
                     # find X and Y coords of top left
                     left_x = file.find('X', p_index)
                     top_y = file.find('Y', p_index)
@@ -144,45 +149,48 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
     svg.add(svg.rect(insert=(0, 0), size=(
         str(width*scale), str(height*scale)), fill='#2ea64e'))
 
-    # open top copper file
+    # open copper file
     copper_file = open(copper, 'r').read()
 
-    # draw top silk screen
+    # draw copper layer
     print('Etching Copper')
-    index = 0
-    while(True):
-        # get index of first toolpath
-        index = copper_file.find('G01', index+1)
-        if(index == -1):
-            break
-        else:
-            # find X and Y coords
-            curr_x = copper_file.find('X', index)
-            curr_y = copper_file.find('Y', index)
-            curr_x = str(float(copper_file[curr_x+1:curr_y])/1000 * scale)
-            y_len = 1
-            while(str.isnumeric(copper_file[curr_y+1+y_len])):
-                y_len += 1
-            curr_y = str(
-                float(copper_file[curr_y+1: curr_y+1+y_len])/1000 * scale)
+    draw_macros(file=copper_file, drawing=svg,
+                color='darkgreen', scale=3.543307)
+    # index = 0
+    # while(True):
+    #     # get index of first toolpath
+    #     index = copper_file.find('G01', index+1)
+    #     if(index == -1):
+    #         break
+    #     else:
+    #         # find X and Y coords
+    #         curr_x = copper_file.find('X', index)
+    #         curr_y = copper_file.find('Y', index)
+    #         curr_x = str(float(copper_file[curr_x+1:curr_y])/1000 * scale)
+    #         y_len = 1
+    #         while(str.isnumeric(copper_file[curr_y+1+y_len])):
+    #             y_len += 1
+    #         curr_y = str(
+    #             float(copper_file[curr_y+1: curr_y+1+y_len])/1000 * scale)
 
-            # get D code
-            D_code = copper_file.find('D', index)
-            D_code = copper_file[D_code:D_code+3]
-            if(D_code == 'D01'):
-                # draw line
-                svg.add(svg.line(start=(prev_x, prev_y),
-                                 end=(curr_x, curr_y), stroke='darkgreen'))
+    #         # get D code
+    #         D_code = copper_file.find('D', index)
+    #         D_code = copper_file[D_code:D_code+3]
+    #         if(D_code == 'D01'):
+    #             # draw line
+    #             svg.add(svg.line(start=(prev_x, prev_y),
+    #                              end=(curr_x, curr_y), stroke='darkgreen'))
 
-            prev_x = curr_x
-            prev_y = curr_y
-    svg.save()
+    #         prev_x = curr_x
+    #         prev_y = curr_y
+    # svg.save()
 
     # open top solder mask file
     mask_file = open(mask, 'r').read()
 
     # draw top solder mask
     print('Applying Solder Mask')
+
     area_fill(file=mask_file, drawing=svg, color='grey', scale=3.543307)
     draw_macros(file=mask_file, drawing=svg, color='grey', scale=3.543307)
 
@@ -240,5 +248,5 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
 render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_TopLayer.GTL',
             './testgerber/Gerber_TopSolderMaskLayer.GTS', './testgerber/Gerber_TopSilkLayer.GTO', './testgerber/Gerber_Drill_PTH.DRL', 'top.svg')
 
-# render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_BottomLayer.GBL',
-#             './testgerber/Gerber_BottomSolderMaskLayer.GBS', './testgerber/Gerber_BottomSilkLayer.GBO', './testgerber/Gerber_Drill_PTH.DRL')
+render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_BottomLayer.GBL',
+            './testgerber/Gerber_BottomSolderMaskLayer.GBS', './testgerber/Gerber_BottomSilkLayer.GBO', './testgerber/Gerber_Drill_PTH.DRL')
