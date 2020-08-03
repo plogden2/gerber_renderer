@@ -1,0 +1,17 @@
+Metadata-Version: 2.1
+Name: gerber-renderer
+Version: 0.0.35
+Summary: A library for rendering gerber files as SVGs
+Home-page: https://github.com/Pitwuk/gerber_renderer
+Author: Patrick Ogden
+Author-email: plogden2@gmail.com
+License: UNKNOWN
+Description: # gerber_renderer
+        Python library for rendering gerber PCB files as svgs.
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown

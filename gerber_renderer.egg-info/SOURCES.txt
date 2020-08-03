@@ -1,0 +1,9 @@
+README.md
+setup.py
+gerber_renderer/__init__.py
+gerber_renderer/renderer.py
+gerber_renderer.egg-info/PKG-INFO
+gerber_renderer.egg-info/SOURCES.txt
+gerber_renderer.egg-info/dependency_links.txt
+gerber_renderer.egg-info/requires.txt
+gerber_renderer.egg-info/top_level.txt
