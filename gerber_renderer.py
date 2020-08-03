@@ -2,6 +2,77 @@ import svgwrite
 from svgwrite import cm, mm, inch
 
 
+def draw_macros(file, drawing, color, scale=3.543307, fill='none'):
+    index = 0
+    # draw circles
+    while(True):
+        # get index of circle profile declaration
+        index = file.find('%ADD', index+1)
+        if(index == -1):
+            break
+        else:
+            # determine if circle or rect
+            if(file[index+5] == 'C' or file[index+6] == 'C'):
+                # draw circles
+                radius = str(float(file[file.find(
+                    ',', index)+1: file.find('*', index)])/2 * scale)
+
+                c_id = file[index+4:index+6]
+
+                # find circle centers of profile
+                p_index = file.find('D' + c_id, index + 8)
+
+                # find and draw all circles for current diameter
+                path = ''
+                while(True):
+                    p_index = file.find('G', p_index+1)
+                    if(file[p_index: p_index+3] != 'G01'):
+                        break
+                    x = file.find('X', p_index)
+                    y = file.find('Y', x)
+                    x = str(float(file[x+1:y])/1000*scale)
+                    y = str(
+                        float(file[y+1:file.find('D', y)])/1000*scale)
+                    if(file[file.find('D', p_index):file.find('D', p_index)+3] == 'D02'):
+                        path += 'M' + x + ',' + str(float(y))
+                    else:
+                        path += 'L' + x + ',' + str(float(y))
+
+                    drawing.add(drawing.circle(center=(x, y),
+                                               r=radius, fill=color))
+                drawing.add(drawing.path(d=path, stroke=color,
+                                         stroke_width=float(radius)*2, fill=fill))
+                # draw rectangles
+            else:
+                r_width = str(float(file[file.find(
+                    ',', index)+1: file.find('X', index)]) * scale)
+                r_height = str(float(file[file.find(
+                    'X', index)+1: file.find('*', index)]) * scale)
+                r_id = file[index+4:index+6]
+
+                # findrect coords of profile
+                p_index = file.find('D' + r_id, index + 8)
+
+                while(True):
+                    p_index = file.find('G', p_index+1)
+                    if(file[p_index: p_index+3] != 'G01'):
+                        break
+                    # find X and Y coords of top left
+                    left_x = file.find('X', p_index)
+                    top_y = file.find('Y', p_index)
+
+                    left_x = str(
+                        float(file[left_x+1:top_y])/1000*scale-float(r_width)/2)
+
+                    top_y = str(
+                        float(file[top_y+1: file.find('D', top_y+1)])/1000*scale-float(r_height)/2)
+
+                    # draw rect
+                    drawing.add(drawing.rect(insert=(left_x, top_y), size=(
+                        r_width, r_height), fill=color))
+        drawing.save()
+
+
 def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
     # initialize svg
     svg = svgwrite.Drawing(filename=filename, debug=True)
@@ -130,108 +201,16 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
             svg.add(svg.rect(insert=(left_x, top_y), size=(
                 r_width, r_height), fill='grey'))
 
-    # draw circles
-    while(True):
-        # get index of circle profile declaration
-        index = mask_file.find('%ADD', index+1)
-        if(index == -1):
-            break
-        else:
-            # determine if circle or rect
-            if(mask_file[index+5] == 'C' or mask_file[index+6] == 'C'):
-                # draw circles
-                radius = str(float(mask_file[mask_file.find(
-                    ',', index)+1: mask_file.find('*', index)])/2 * scale)
-
-                c_id = mask_file[index+4:index+6]
-
-                # find circle centers of profile
-                p_index = mask_file.find('D' + c_id, index + 8)
-
-                # find and draw all circles for current diameter
-                path = ''
-                while(True):
-                    p_index = mask_file.find('G', p_index+1)
-                    if(mask_file[p_index: p_index+3] != 'G01'):
-                        break
-                    x = mask_file.find('X', p_index)
-                    y = mask_file.find('Y', x)
-                    x = str(float(mask_file[x+1:y])/1000*scale)
-                    y = str(
-                        float(mask_file[y+1:mask_file.find('D', y)])/1000*scale)
-                    if(mask_file[mask_file.find('D', p_index):mask_file.find('D', p_index)+3] == 'D02'):
-                        path += 'M' + x + ',' + str(float(y))
-                    else:
-                        path += 'L' + x + ',' + str(float(y))
-
-                    svg.add(svg.circle(center=(x, y),
-                                       r=radius, fill='grey'))
-                svg.add(svg.path(d=path, stroke='grey',
-                                 stroke_width=float(radius)*2))
-                # draw rectangles
-            else:
-                r_width = str(float(mask_file[mask_file.find(
-                    ',', index)+1: mask_file.find('X', index)]) * scale)
-                r_height = str(float(mask_file[mask_file.find(
-                    'X', index)+1: mask_file.find('*', index)]) * scale)
-                r_id = mask_file[index+4:index+6]
-
-                # findrect coords of profile
-                p_index = mask_file.find('D' + r_id, index + 8)
-
-                while(True):
-                    p_index = mask_file.find('G', p_index+1)
-                    if(mask_file[p_index: p_index+3] != 'G01'):
-                        break
-                    # find X and Y coords of top left
-                    left_x = mask_file.find('X', p_index)
-                    top_y = mask_file.find('Y', p_index)
-
-                    left_x = str(
-                        float(mask_file[left_x+1:top_y])/1000*scale-float(r_width)/2)
-
-                    top_y = str(
-                        float(mask_file[top_y+1: mask_file.find('D', top_y+1)])/1000*scale-float(r_height)/2)
-
-                    # draw rect
-                    svg.add(svg.rect(insert=(left_x, top_y), size=(
-                        r_width, r_height), fill='grey'))
-
-    svg.save()
+    draw_macros(file=mask_file, drawing=svg, color='grey', scale=3.543307)
 
     # open top silk screen file
     silk_file = open(silk, 'r').read()
 
     # draw top silk screen
     print('Curing Silk Screen')
-    index = 0
-    while(True):
-        # get index of first toolpath
-        index = silk_file.find('G01', index+1)
-        if(index == -1):
-            break
-        else:
-            # find X and Y coords
-            curr_x = silk_file.find('X', index)
-            curr_y = silk_file.find('Y', index)
-            curr_x = str(float(silk_file[curr_x+1:curr_y])/1000 * scale)
-            y_len = 1
-            while(str.isnumeric(silk_file[curr_y+1+y_len])):
-                y_len += 1
-            curr_y = str(
-                float(silk_file[curr_y+1: curr_y+1+y_len])/1000 * scale)
-
-            # get D code
-            D_code = silk_file.find('D', index)
-            D_code = silk_file[D_code:D_code+3]
-            if(D_code == 'D01'):
-                # draw line
-                svg.add(svg.line(start=(prev_x, prev_y),
-                                 end=(curr_x, curr_y), stroke='white'))
-
-            prev_x = curr_x
-            prev_y = curr_y
-    svg.save()
+    # draw silkscreen with macros
+    draw_macros(file=silk_file, drawing=svg,
+                color='white', scale=3.543307)
 
     # open drill file
     drill_file = open(drill, 'r').read()
@@ -276,5 +255,5 @@ def render_file(outline, copper, mask, silk, drill, filename='pcb.svg'):
 render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_TopLayer.GTL',
             './testgerber/Gerber_TopSolderMaskLayer.GTS', './testgerber/Gerber_TopSilkLayer.GTO', './testgerber/Gerber_Drill_PTH.DRL', 'top.svg')
 
-render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_BottomLayer.GBL',
-            './testgerber/Gerber_BottomSolderMaskLayer.GBS', './testgerber/Gerber_BottomSilkLayer.GBO', './testgerber/Gerber_Drill_PTH.DRL')
+# render_file('./testgerber/Gerber_BoardOutline.GKO', './testgerber/Gerber_BottomLayer.GBL',
+#             './testgerber/Gerber_BottomSolderMaskLayer.GBS', './testgerber/Gerber_BottomSilkLayer.GBO', './testgerber/Gerber_Drill_PTH.DRL')
