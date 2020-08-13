@@ -1,13 +1,23 @@
 Metadata-Version: 2.1
 Name: gerber-renderer
-Version: 0.0.35
+Version: 0.0.5
 Summary: A library for rendering gerber files as SVGs
 Home-page: https://github.com/Pitwuk/gerber_renderer
 Author: Patrick Ogden
 Author-email: plogden2@gmail.com
 License: UNKNOWN
 Description: # gerber_renderer
-        Python library for rendering gerber PCB files as svgs.
+        
+        Python library for rendering RS274X gerber PCB files as svgs.
+        
+        Installation: 
+        pip install gerber-renderer
+        
+        Example Usage: 
+        from gerber_renderer import Gerber
+        board = Gerber.Board('filepath/gerber.zip', verbose=True) 
+        board.render('filepath/output') 
+        print(board.get_dimensions())
         
 Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3

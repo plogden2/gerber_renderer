@@ -6,8 +6,10 @@ from svgwrite import cm, mm, inch
 
 
 class Gerber:
-    def __init__(self, file, verbose=False):
+    def __init__(self, file, max_height=500, verbose=False):
+        self.max_height = max_height
         self.verbose = verbose
+
         # extracts and sorts a zipped gerber file
         if(self.verbose):
             print('Extracting Files')
@@ -167,19 +169,9 @@ class Gerber:
             self.drawing.save()
 
     def render_files(self, outline, drill, copper, mask, silk='', filename='pcb.svg'):
-        # initialize svg
-        self.drawing = svgwrite.Drawing(
-            filename='./gerber_files/'+filename, debug=True)
 
         # open outline file
         outline_file = open(outline, 'r').read()
-
-        # set units
-        unit = 'mm'
-        self.scale = 3.543307
-        if(outline_file.find('G70') != -1):
-            unit = 'in'
-            self.scale = 90
 
         # get board dimensions
         # get width
@@ -203,6 +195,20 @@ class Gerber:
             if(temp > self.height):
                 self.height = temp
             pointer = outline_file.find('Y', pointer+1)
+
+        # set units
+        unit = 'mm'
+        # self.scale = 3.543307
+        if(outline_file.find('G70') != -1):
+            unit = 'in'
+            # self.scale = 90
+
+        self.scale = self.max_height/self.height
+
+        # initialize svg
+        self.drawing = svgwrite.Drawing(
+            filename='./gerber_files/'+filename, size=(self.width*self.scale, self.height*self.scale), debug=False)
+
         if(self.verbose):
             print('Board Dimensions: ' + str(self.width) +
                   ' x ' + str(self.height) + ' ' + str(unit))
@@ -285,6 +291,6 @@ class Gerber:
 
     def get_dimensions(self):
         if(self.width):
-            return [self.width, self.height]
+            return [self.width, self.height, self.scale]
         else:
             return 'Board Not Rendered'

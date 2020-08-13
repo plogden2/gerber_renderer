@@ -1,5 +1,5 @@
-from gerber_renderer import renderer
+from gerber_renderer import Gerber
 
-
-board = renderer.Gerber('./tests/gerber.zip', verbose=True)
+board = Gerber.Board('./tests/gerber.zip', verbose=True)
+board.render('./tests/output')
 print(board.get_dimensions())
