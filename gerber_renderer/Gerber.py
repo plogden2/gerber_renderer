@@ -1,8 +1,11 @@
+import math
 import zipfile
 import os
 import shutil
 import svgwrite
 from svgwrite import cm, mm, inch
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPDF
 
 
 class Board:
@@ -57,7 +60,7 @@ class Board:
 
     def render(self, output):
         self.output_folder = output
-        if(self.output_folder[-1] is '/'):
+        if(self.output_folder[-1] == '/'):
             self.output_folder = self.output_folder[:-1]
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
@@ -106,13 +109,15 @@ class Board:
         self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
         if(self.files[layer+'_silk']):
-            # draw top silk screen
+            # draw silk screen
             if(self.verbose):
                 print('Curing Silk Screen')
             # draw silkscreen with macros
             self.draw_macros(file=self.files[layer+'_silk'],
                              color='white')
             self.area_fill(file=self.files[layer+'_silk'],
+                           color='white')
+            self.draw_arcs(file=self.files[layer+'_silk'],
                            color='white')
 
         # draw drill holes
@@ -121,6 +126,35 @@ class Board:
         self.drill_holes()
 
         self.drawing.save()
+
+    def render_pdf_copper(self, output, layer='top'):
+        self.set_dimensions()
+
+        self.scale = self.max_height/self.height
+
+        self.output_folder = output
+        if(self.output_folder[-1] == '/'):
+            self.output_folder = self.output_folder[:-1]
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
+        self.output_folder += '/'
+
+        # initialize svg
+        self.drawing = svgwrite.Drawing(
+            filename=self.output_folder+layer+'.svg', size=(self.width*self.scale, self.height*self.scale), debug=False)
+
+        # draw background rectangle
+        self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
+            str(self.width*self.scale), str(self.height*self.scale)), fill='black'))
+
+        # draw copper layer
+        self.draw_macros(file=self.files[layer+'_copper'],
+                         color='white')
+
+        self.drawing.save()
+
+        drawing = svg2rlg(self.output_folder+layer+".svg")
+        renderPDF.drawToFile(drawing, self.output_folder+layer+".pdf")
 
     def draw_macros(self, file, color, fill='none'):
         index = 0
@@ -196,6 +230,63 @@ class Board:
                         self.drawing.add(self.drawing.rect(insert=(left_x, top_y), size=(
                             r_width, r_height), fill=color))
 
+    def draw_arcs(self, file, color):
+        index = 0
+        single_quadrant_done = False
+        large_arc_flag = 0
+        while(True):
+            if(not single_quadrant_done):
+                index = file.find('G74', index+1)
+            else:
+                index = file.find('G75', index+1)
+            if(index == -1):
+                if(single_quadrant_done):
+                    break
+                else:
+                    single_quadrant_done = True
+                    large_arc_flag = 1
+                    index = index = file.find('G75', index+1)
+            else:
+                # find all coords and draw path
+                path = ''
+                while(True):
+                    index = file.find('G', index+1)
+                    if(file[index: index+3] == 'G01'):
+                        x = file.find('X', index)
+                        y = file.find('Y', x)
+                        x = str(float(file[x+1:y])/1000*self.scale)
+                        y = str(
+                            float(file[y+1:file.find('D', y)])/1000*self.scale)
+                        path += 'M' + x + ',' + str(float(y))
+                    elif(file[index: index+3] == 'G02' or file[index: index+3] == 'G03'):
+                        path += self.draw_arc(
+                            file[index:file.find('*', index)], large_arc_flag)
+                    else:
+                        break
+                self.drawing.add(self.drawing.path(
+                    d=path, stroke=color, fill='none'))
+
+    def draw_arc(self, g_code, large_arc_flag):
+        y_loc = g_code.find('Y')
+        i_loc = g_code.find('I')
+        d_loc = g_code.find('D')
+        x = float(g_code[4:y_loc])/1000*self.scale
+        y = float(g_code[y_loc+1:i_loc])/1000*self.scale
+        i = 0
+        j = 0
+
+        if(g_code.find('J') != -1):
+            j = float(g_code[g_code.find('J')+1:d_loc])/1000*self.scale
+            print(g_code[g_code.find('J')+1:d_loc])
+            d_loc = g_code.find('J')
+
+        i = float(g_code[i_loc+1:d_loc])/1000*self.scale
+
+        radius = math.sqrt(i**2 + j**2)
+
+        return('A '+str(radius)+' '+str(radius) +
+               ' 0 '+str(large_arc_flag) + ' 1 ' + str(x) + ' ' + str(y))
+
     def area_fill(self, file, color):
         index = 0
         while(True):
@@ -209,6 +300,8 @@ class Board:
                 while(True):
                     index = file.find('G', index+1)
                     if(file[index: index+3] != 'G01'):
+                        if(file[index: index+3] == 'G02' or file[index: index+3] == 'G03'):
+                            self.draw_arc(file[index:file.find('*', index)])
                         break
                     x = file.find('X', index)
                     y = file.find('Y', x)
