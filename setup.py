@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gerber_renderer",  # Replace with your own username
-    version="0.0.5",
+    version="0.0.51",
     author="Patrick Ogden",
     author_email="plogden2@gmail.com",
     description="A library for rendering gerber files as SVGs",
