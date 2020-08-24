@@ -98,21 +98,26 @@ class Board:
         # draw copper layer
         if(self.verbose):
             print('Etching Copper')
+        self.setDecimalPlaces(self.files[layer+'_copper'])
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='darkgreen')
+        self.area_fill(file=self.files[layer+'_copper'],  color='darkgreen')
+        self.draw_arcs(file=self.files[layer+'_copper'],  color='darkgreen')
 
         # draw solder mask
         if(self.verbose):
             print('Applying Solder Mask')
-
+        self.setDecimalPlaces(self.files[layer+'_mask'])
         self.area_fill(file=self.files[layer+'_mask'],  color='grey')
         self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+        self.draw_arcs(file=self.files[layer+'_mask'],  color='grey')
 
         if(self.files[layer+'_silk']):
             # draw silk screen
             if(self.verbose):
                 print('Curing Silk Screen')
             # draw silkscreen with macros
+            self.setDecimalPlaces(self.files[layer+'_silk'])
             self.draw_macros(file=self.files[layer+'_silk'],
                              color='white')
             self.area_fill(file=self.files[layer+'_silk'],
@@ -127,7 +132,7 @@ class Board:
 
         self.drawing.save()
 
-    def render_pdf_copper(self, output, layer='top'):
+    def render_pdf(self, output, layer='top_copper', color='white'):
         self.set_dimensions()
 
         self.scale = self.max_height/self.height
@@ -145,16 +150,18 @@ class Board:
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
-            str(self.width*self.scale), str(self.height*self.scale)), fill='black'))
+            str(self.width*self.scale), str(self.height*self.scale)), fill='black' if color == 'white' else 'white'))
 
         # draw copper layer
-        self.draw_macros(file=self.files[layer+'_copper'],
-                         color='white')
+        self.draw_macros(file=self.files[layer],
+                         color=color)
+        self.area_fill(file=self.files[layer],
+                       color=color)
 
         self.drawing.save()
 
-        drawing = svg2rlg(self.output_folder+layer+".svg")
-        renderPDF.drawToFile(drawing, self.output_folder+layer+".pdf")
+        # drawing = svg2rlg(self.output_folder+layer+".svg")
+        # renderPDF.drawToFile(drawing, self.output_folder+layer+".pdf")
 
     def draw_macros(self, file, color, fill='none'):
         index = 0
@@ -186,9 +193,9 @@ class Board:
                                 break
                         x = file.find('X', p_index)
                         y = file.find('Y', x)
-                        x = str(float(file[x+1:y])/1000*self.scale)
+                        x = str(float(file[x+1:y])/self.x_decimals*self.scale)
                         y = str(
-                            float(file[y+1:file.find('D', y)])/1000*self.scale)
+                            float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
                         if(file[file.find('D', p_index):file.find('D', p_index)+3] == 'D02'):
                             path += 'M' + x + ',' + str(float(y))
                         elif (file[file.find('D', p_index):file.find('D', p_index)+3] == 'D01'):
@@ -221,10 +228,10 @@ class Board:
                         top_y = file.find('Y', p_index)
 
                         left_x = str(
-                            float(file[left_x+1:top_y])/1000*self.scale-float(r_width)/2)
+                            float(file[left_x+1:top_y])/self.x_decimals*self.scale-float(r_width)/2)
 
                         top_y = str(
-                            float(file[top_y+1: file.find('D', top_y+1)])/1000*self.scale-float(r_height)/2)
+                            float(file[top_y+1: file.find('D', top_y+1)])/self.y_decimals*self.scale-float(r_height)/2)
 
                         # draw rect
                         self.drawing.add(self.drawing.rect(insert=(left_x, top_y), size=(
@@ -254,9 +261,9 @@ class Board:
                     if(file[index: index+3] == 'G01'):
                         x = file.find('X', index)
                         y = file.find('Y', x)
-                        x = str(float(file[x+1:y])/1000*self.scale)
+                        x = str(float(file[x+1:y])/self.x_decimals*self.scale)
                         y = str(
-                            float(file[y+1:file.find('D', y)])/1000*self.scale)
+                            float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
                         path += 'M' + x + ',' + str(float(y))
                     elif(file[index: index+3] == 'G02' or file[index: index+3] == 'G03'):
                         path += self.draw_arc(
@@ -270,17 +277,18 @@ class Board:
         y_loc = g_code.find('Y')
         i_loc = g_code.find('I')
         d_loc = g_code.find('D')
-        x = float(g_code[4:y_loc])/1000*self.scale
-        y = float(g_code[y_loc+1:i_loc])/1000*self.scale
+        x = float(g_code[4:y_loc])/self.x_decimals*self.scale
+        y = float(g_code[y_loc+1:i_loc])/self.y_decimals*self.scale
         i = 0
         j = 0
 
         if(g_code.find('J') != -1):
-            j = float(g_code[g_code.find('J')+1:d_loc])/1000*self.scale
+            j = float(g_code[g_code.find('J')+1:d_loc]) / \
+                self.x_decimals*self.scale
             print(g_code[g_code.find('J')+1:d_loc])
             d_loc = g_code.find('J')
 
-        i = float(g_code[i_loc+1:d_loc])/1000*self.scale
+        i = float(g_code[i_loc+1:d_loc])/self.x_decimals*self.scale
 
         radius = math.sqrt(i**2 + j**2)
 
@@ -305,9 +313,9 @@ class Board:
                         break
                     x = file.find('X', index)
                     y = file.find('Y', x)
-                    x = str(float(file[x+1:y])/1000*self.scale)
+                    x = str(float(file[x+1:y])/self.x_decimals*self.scale)
                     y = str(
-                        float(file[y+1:file.find('D', y)])/1000*self.scale)
+                        float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
                     if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
                         path += 'M' + x + ',' + str(float(y))
                     else:
@@ -343,9 +351,10 @@ class Board:
                     y_len = 1
                     while(str.isnumeric(self.files['drill'][curr_y+1+y_len])):
                         y_len += 1
-                    hole_x = float(self.files['drill'][curr_x+1:curr_y])/1000
+                    hole_x = float(self.files['drill']
+                                   [curr_x+1:curr_y])/self.x_decimals
                     hole_y = float(self.files['drill']
-                                   [curr_y+1: curr_y+1+y_len])/1000
+                                   [curr_y+1: curr_y+1+y_len])/self.y_decimals
                     self.drawing.add(self.drawing.circle(center=(str(hole_x*self.scale), str(hole_y*self.scale)),
                                                          r=str(diameter/2*self.scale), fill='black'))
                     curr_x = self.files['drill'].find('X', curr_y)
@@ -353,32 +362,47 @@ class Board:
 
                 tool_num += 1
 
+    def setDecimalPlaces(self, file):
+        index = file.find('FSLAX')
+        self.x_decimals = int(file[index+6:index+7])
+        self.y_decimals = int(file[index+9:index+10])
+        temp = '1'
+        for i in range(self.x_decimals):
+            temp += '0'
+        self.x_decimals = int(temp)
+        temp = '1'
+        for i in range(self.y_decimals):
+            temp += '0'
+        self.y_decimals = int(temp)
+
     def set_dimensions(self):
+        self.setDecimalPlaces(self.files['outline'])
         self.width = 0
-        pointer = self.files['outline'].find('G01X')+3
+        pointer = self.files['outline'].find('D10')
+        pointer = self.files['outline'].find('X', pointer)
         while(pointer != -1):
             temp = float(
-                self.files['outline'][pointer+1: self.files['outline'].find('Y', pointer)])/1000
+                self.files['outline'][pointer+1: self.files['outline'].find('Y', pointer)])/self.x_decimals
             if(temp > self.width):
                 self.width = temp
             pointer = self.files['outline'].find('X', pointer+1)
 
         self.height = 0
         pointer = self.files['outline'].find(
-            'Y', self.files['outline'].find('G01X'))
+            'Y', self.files['outline'].find('X'))
         while(pointer != -1):
             y_len = 1
             while(str.isnumeric(self.files['outline'][pointer+1+y_len])):
                 y_len += 1
 
             temp = float(self.files['outline']
-                         [pointer+1: pointer+1+y_len])/1000
+                         [pointer+1: pointer+1+y_len])/self.y_decimals
             if(temp > self.height):
                 self.height = temp
             pointer = self.files['outline'].find('Y', pointer+1)
 
         unit = 'mm'
-        if(self.files['outline'].find('G70') != -1):
+        if(self.files['outline'].find('MOIN') != -1):
             unit = 'in'
 
         if(self.verbose):
