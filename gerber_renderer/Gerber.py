@@ -105,26 +105,26 @@ class Board:
         # self.area_fill(file=self.files[layer+'_copper'],  color='darkgreen')
         # self.draw_arcs(file=self.files[layer+'_copper'],  color='darkgreen')
 
-        # # draw solder mask
+        # draw solder mask
         # if(self.verbose):
         #     print('Applying Solder Mask')
-        # self.set_decimal_places(self.files[layer+'_mask'])
+        # self.init_file(self.files[layer+'_mask'])
         # self.area_fill(file=self.files[layer+'_mask'],  color='grey')
         # self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
         # self.draw_arcs(file=self.files[layer+'_mask'],  color='grey')
 
-        # if(self.files[layer+'_silk']):
-        #     # draw silk screen
-        #     if(self.verbose):
-        #         print('Curing Silk Screen')
-        #     # draw silkscreen with macros
-        #     self.set_decimal_places(self.files[layer+'_silk'])
-        #     self.draw_macros(file=self.files[layer+'_silk'],
-        #                      color='white')
+        if(self.files[layer+'_silk']):
+            # draw silk screen
+            if(self.verbose):
+                print('Curing Silk Screen')
+            # draw silkscreen with macros
+            self.init_file(self.files[layer+'_silk'])
+            self.draw_macros(file=self.files[layer+'_silk'],
+                             color='white')
         #     self.area_fill(file=self.files[layer+'_silk'],
         #                    color='white')
-        #     self.draw_arcs(file=self.files[layer+'_silk'],
-        #                    color='white')
+        # self.draw_arcs(file=self.files[layer+'_silk'],
+            #    color='white')
 
         # # draw drill holes
         # if(self.verbose):
@@ -164,43 +164,32 @@ class Board:
         # drawing = svg2rlg(self.output_folder+layer+".svg")
         # renderPDF.drawToFile(drawing, self.output_folder+layer+".pdf")
 
-    def draw_arcs(self, file, color):
+    def draw_arcs(self, g_code, color, radius):
         index = 0
-        single_quadrant_done = False
-        large_arc_flag = 0
+        # find all coords and draw path
+        path = ''
         while(True):
-            if(not single_quadrant_done):
-                index = file.find('G74', index+1)
-            else:
-                index = file.find('G75', index+1)
-            if(index == -1):
-                if(single_quadrant_done):
-                    break
+            index = g_code.find('G', index+1)
+            if(g_code[index: index+3] == 'G01'):
+                x = g_code.find('X', index)
+                y = g_code.find('Y', x)
+                x = str(float(g_code[x+1:y])/self.x_decimals*self.scale)
+                y = str(
+                    float(g_code[y+1:g_code.find('D', y)])/self.y_decimals*self.scale)
+                path += 'M' + x + ',' + str(float(y))
+            elif(g_code[index: index+3] == 'G02' or g_code[index: index+3] == 'G03'):
+                if(g_code[index: index+3] == 'G02'):
+                    sweep_flag = '0'
                 else:
-                    single_quadrant_done = True
-                    large_arc_flag = 1
-                    index = index = file.find('G75', index+1)
+                    sweep_flag = '1'
+                path += self.draw_arc(
+                    g_code[index:g_code.find('*', index)], sweep_flag, start_pos=(x, y))
             else:
-                # find all coords and draw path
-                path = ''
-                while(True):
-                    index = file.find('G', index+1)
-                    if(file[index: index+3] == 'G01'):
-                        x = file.find('X', index)
-                        y = file.find('Y', x)
-                        x = str(float(file[x+1:y])/self.x_decimals*self.scale)
-                        y = str(
-                            float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
-                        path += 'M' + x + ',' + str(float(y))
-                    elif(file[index: index+3] == 'G02' or file[index: index+3] == 'G03'):
-                        path += self.draw_arc(
-                            file[index:file.find('*', index)], large_arc_flag)
-                    else:
-                        break
-                self.drawing.add(self.drawing.path(
-                    d=path, stroke=color, fill='none'))
+                break
+        self.drawing.add(self.drawing.path(
+            d=path, stroke=color, stroke_width=radius*2, fill='none'))
 
-    def draw_arc(self, g_code, large_arc_flag):
+    def draw_arc(self, g_code, sweep_flag, start_pos):
         y_loc = g_code.find('Y')
         i_loc = g_code.find('I')
         d_loc = g_code.find('D')
@@ -211,21 +200,46 @@ class Board:
         if(g_code.find('J') != -1):
             j = float(g_code[g_code.find('J')+1:d_loc]) / \
                 self.x_decimals*self.scale
-            print(g_code[g_code.find('J')+1:d_loc])
             d_loc = g_code.find('J')
 
         if(i_loc != -1):
             y = float(g_code[y_loc+1:i_loc])/self.y_decimals*self.scale
             i = float(g_code[g_code.find('I')+1:d_loc]) / \
                 self.x_decimals*self.scale
-            print(g_code[g_code.find('I')+1:d_loc])
         else:
             y = float(g_code[y_loc+1:d_loc])/self.y_decimals*self.scale
+
+        center = (float(start_pos[0])+i, float(start_pos[1])+j)
+
+        start_angle = self.find_angle(start_pos, center)
+        end_angle = self.find_angle((x, y), center)
+
+        if(sweep_flag == '0'):
+            angle = (start_angle-end_angle)
+        else:
+            angle = (end_angle-start_angle)
+        if(angle < 0):
+            angle += 2
+
+        if((angle) >= 1):
+            large_arc_flag = 1
+        else:
+            large_arc_flag = 0
 
         radius = math.sqrt(i**2 + j**2)
 
         return('A '+str(radius)+' '+str(radius) +
-               ' 0 '+str(large_arc_flag) + ' 1 ' + str(x) + ' ' + str(y))
+               ' 0 '+str(large_arc_flag) + ' ' + sweep_flag + ' ' + str(x) + ' ' + str(y))
+
+    def find_angle(self, pos, center):
+        y = float(pos[1]) - float(center[1])
+        x = float(pos[0]) - float(center[0])
+        angle = math.atan2(y, x)
+        angle /= math.pi
+        if(angle < 0):
+            angle = 2+angle
+        # print(angle)
+        return angle
 
     def area_fill(self, file, color):
         index = 0
@@ -295,31 +309,46 @@ class Board:
                 tool_num += 1
 
     def draw_macros(self, file, color, fill='none'):
+        arc_starts = list(self.arcs.keys())
+        arc_starts.sort()
+
         for macro in self.aperture_locs:
 
             if(self.apertures[macro[0]][0]):
+                # draw all arcs within macro
+                while(len(arc_starts) != 0):
+                    if(int(arc_starts[0]) >= int(macro[1]) and int(self.arcs[arc_starts[0]]) <= int(macro[2])):
+                        self.draw_arcs(
+                            file[int(arc_starts[0]):int(self.arcs[arc_starts[0]])], color, float(self.apertures[macro[0]][1]))
+                        del arc_starts[0]
+                    else:
+                        break
                 # draw circle apertures
                 path = ''
 
+                # find first x
                 index = file.find('X', macro[1])
-                while(index < macro[2] and index != -1):
-                    y = file.find('Y', index)
-                    x = str(float(file[index+1:y]
-                                  )/self.x_decimals*self.scale)
-                    y = str(
-                        float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
-                    if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
-                        path += 'M' + x + ',' + str(float(y))
-                    elif (file[file.find('D', index):file.find('D', index)+3] == 'D01'):
-                        path += 'L' + x + ',' + str(float(y))
 
-                    self.drawing.add(self.drawing.circle(center=(x, y),
-                                                         r=self.apertures[macro[0]][1], fill=color))
+                while(index < macro[2] and index != -1):
+                    y_loc = file.find('Y', index)
+                    if(file[y_loc+1:file.find('D', y_loc)].find('J') == -1 and file[y_loc+1:file.find('D', y_loc)].find('I') == -1):
+                        x = str(float(file[index+1:y_loc]
+                                      )/self.x_decimals*self.scale)
+                        y = str(
+                            float(file[y_loc+1:file.find('D', y_loc)])/self.y_decimals*self.scale)
+                        if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
+                            path += 'M' + x + ',' + str(float(y))
+                        elif (file[file.find('D', index):file.find('D', index)+3] == 'D01'):
+                            path += 'L' + x + ',' + str(float(y))
+
+                        self.drawing.add(self.drawing.circle(center=(x, y),
+                                                             r=self.apertures[macro[0]][1], fill=color))
                     index = file.find('X', index+1)
+
                 if(path):
                     self.drawing.add(self.drawing.path(d=path, stroke=color,
                                                        stroke_width=float(self.apertures[macro[0]][1])*2, fill=fill))
-
+            # draw rectangular apertures
             else:
                 index = file.find('X', macro[1])
                 while(index < macro[2] and index != -1):
@@ -337,6 +366,25 @@ class Board:
                     self.drawing.add(self.drawing.rect(insert=(x, y), size=(
                         width, height), fill=color))
                     index = file.find('X', index+1)
+
+    def store_arcs(self, file):
+        self.arcs = {}
+        # store all arcs start_location: end location
+        # store G74 arcs
+        for i in self.find_all_groups(file, 'G74', 'G01*'):
+            self.arcs[i[0]] = i[1]
+        # store G75 arcs
+        for i in self.find_all_groups(file, 'G75', 'G01*'):
+            self.arcs[i[0]] = i[1]
+
+    def find_all_groups(self, file, start, end):
+        arr = []
+        index = file.find(start)
+        while(index != -1):
+            end_pos = file.find(end, index)
+            arr.append((index, end_pos))
+            index = file.find(start, end_pos)
+        return arr
 
     def store_apertures(self, file):
         # [[id,circle_bool, radius, additional rect dimention]]
@@ -377,15 +425,15 @@ class Board:
                 end_pos = len(file)
             else:
                 end_pos = self.aperture_locs[i+1][1]
-            temp_pos = file.find('G36', start_pos, end_pos)
-            if(temp_pos != -1):
-                end_pos = temp_pos
-            temp_pos = file.find('G74', start_pos, end_pos)
-            if(temp_pos != -1):
-                end_pos = temp_pos
-            temp_pos = file.find('G75', start_pos, end_pos)
-            if(temp_pos != -1):
-                end_pos = temp_pos
+            # temp_pos = file.find('G36', start_pos, end_pos)
+            # if(temp_pos != -1):
+            #     end_pos = temp_pos
+            # temp_pos = file.find('G74', start_pos, end_pos)
+            # if(temp_pos != -1):
+            #     end_pos = temp_pos
+            # temp_pos = file.find('G75', start_pos, end_pos)
+            # if(temp_pos != -1):
+            #     end_pos = temp_pos
             self.aperture_locs[i] += (end_pos,)
 
     def select_aperture(self, file, id, ref_index):
@@ -394,8 +442,6 @@ class Board:
 
         while(next_index != -1 and (file[file.find('D', next_index): file.find('D', next_index)+3] == 'D01', file[file.find('D', next_index): file.find('D', next_index)+3] == 'D02', file[file.find('D', next_index): file.find('D', next_index)+3] == 'D03')):
             next_index = file.find('D', next_index+3)
-            print(file[file.find('D', next_index)
-                  : file.find('D', next_index)+3])
         if(next_index == -1):
             next_index = file.find('M02')
 
@@ -461,3 +507,4 @@ class Board:
         self.set_decimal_places(file)
         self.store_apertures(file)
         self.find_aperture_locations(file)
+        self.store_arcs(file)
