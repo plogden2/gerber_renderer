@@ -6,6 +6,7 @@ import shutil
 import svgwrite
 from svgwrite import cm, mm, inch
 from svglib.svglib import svg2rlg
+import reportlab.graphics as graphics
 from reportlab.graphics import renderPDF
 
 
@@ -86,6 +87,7 @@ class Board:
     def draw_svg(self, layer, filename):
         self.set_dimensions()
 
+        print(self.width)
         self.scale = self.max_height/self.height
 
         # initialize svg
@@ -102,41 +104,38 @@ class Board:
         self.init_file(self.files[layer+'_copper'])
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='darkgreen')
-        # self.area_fill(file=self.files[layer+'_copper'],  color='darkgreen')
-        # self.draw_arcs(file=self.files[layer+'_copper'],  color='darkgreen')
+        self.area_fill(file=self.files[layer+'_copper'],  color='darkgreen')
 
         # draw solder mask
-        # if(self.verbose):
-        #     print('Applying Solder Mask')
-        # self.init_file(self.files[layer+'_mask'])
-        # self.area_fill(file=self.files[layer+'_mask'],  color='grey')
-        # self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
-        # self.draw_arcs(file=self.files[layer+'_mask'],  color='grey')
+        if(self.verbose):
+            print('Applying Solder Mask')
+        self.init_file(self.files[layer+'_mask'])
+        self.area_fill(file=self.files[layer+'_mask'],  color='grey')
+        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
         if(self.files[layer+'_silk']):
             # draw silk screen
             if(self.verbose):
                 print('Curing Silk Screen')
-            # draw silkscreen with macros
             self.init_file(self.files[layer+'_silk'])
             self.draw_macros(file=self.files[layer+'_silk'],
                              color='white')
-        #     self.area_fill(file=self.files[layer+'_silk'],
-        #                    color='white')
-        # self.draw_arcs(file=self.files[layer+'_silk'],
-            #    color='white')
+            self.area_fill(file=self.files[layer+'_silk'],
+                           color='white')
 
-        # # draw drill holes
-        # if(self.verbose):
-        #     print('Drilling Holes')
-        # self.drill_holes()
+        # draw drill holes
+        if(self.verbose):
+            print('Drilling Holes')
+        self.drill_holes()
 
         self.drawing.save()
 
-    def render_pdf(self, output, layer='top_copper', color='white'):
+# scale compensation +0.05 = 5% bigger
+    def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, mirrored=False):
         self.set_dimensions()
 
-        self.scale = self.max_height/self.height
+        self.scale = 3.543307 if self.unit == 'mm' else 90
+        self.scale *= (1+scale_compensation)
 
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
@@ -153,7 +152,8 @@ class Board:
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
             str(self.width*self.scale), str(self.height*self.scale)), fill='black' if color == 'white' else 'white'))
 
-        # draw copper layer
+        # draw layer
+        self.init_file(self.files[layer])
         self.draw_macros(file=self.files[layer],
                          color=color)
         self.area_fill(file=self.files[layer],
@@ -161,8 +161,12 @@ class Board:
 
         self.drawing.save()
 
-        # drawing = svg2rlg(self.output_folder+layer+".svg")
-        # renderPDF.drawToFile(drawing, self.output_folder+layer+".pdf")
+        drawing = svg2rlg(self.output_folder+layer+".svg")
+        if(mirrored):
+            drawing.scale(-1, 1)
+            drawing.translate(float(drawing.getBounds()[0]), 0)
+        renderPDF.drawToFile(drawing, self.output_folder +
+                             layer+".pdf", autoSize=1)
 
     def draw_arcs(self, g_code, color, radius):
         index = 0
@@ -335,7 +339,7 @@ class Board:
                         x = str(float(file[index+1:y_loc]
                                       )/self.x_decimals*self.scale)
                         y = str(
-                            float(file[y_loc+1:file.find('D', y_loc)])/self.y_decimals*self.scale)
+                            abs(float(file[y_loc+1:file.find('D', y_loc)]))/self.y_decimals*self.scale)
                         if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
                             path += 'M' + x + ',' + str(float(y))
                         elif (file[file.find('D', index):file.find('D', index)+3] == 'D01'):
@@ -360,7 +364,7 @@ class Board:
                         float(file[index+1:y])/self.x_decimals*self.scale-float(width)/2)
 
                     y = str(
-                        float(file[y+1: file.find('D', y+1)])/self.y_decimals*self.scale-float(height)/2)
+                        abs(float(file[y+1: file.find('D', y+1)]))/self.y_decimals*self.scale-float(height)/2)
 
                     # draw rect
                     self.drawing.add(self.drawing.rect(insert=(x, y), size=(
@@ -425,9 +429,9 @@ class Board:
                 end_pos = len(file)
             else:
                 end_pos = self.aperture_locs[i+1][1]
-            # temp_pos = file.find('G36', start_pos, end_pos)
-            # if(temp_pos != -1):
-            #     end_pos = temp_pos
+            temp_pos = file.find('G36', start_pos, end_pos)
+            if(temp_pos != -1):
+                end_pos = temp_pos
             # temp_pos = file.find('G74', start_pos, end_pos)
             # if(temp_pos != -1):
             #     end_pos = temp_pos
@@ -463,36 +467,32 @@ class Board:
     def set_dimensions(self):
         self.set_decimal_places(self.files['outline'])
         self.width = 0
+        self.height = 0
         pointer = self.files['outline'].find('D10')
         pointer = self.files['outline'].find('X', pointer)
         while(pointer != -1):
-            temp = float(
-                self.files['outline'][pointer+1: self.files['outline'].find('Y', pointer)])/self.x_decimals
+            y = self.files['outline'].find('Y', pointer+1)
+            temp = abs(float(
+                self.files['outline'][pointer+1: y]))/self.x_decimals
             if(temp > self.width):
                 self.width = temp
-            pointer = self.files['outline'].find('X', pointer+1)
 
-        self.height = 0
-        pointer = self.files['outline'].find(
-            'Y', self.files['outline'].find('X'))
-        while(pointer != -1):
-            y_len = 1
-            while(str.isnumeric(self.files['outline'][pointer+1+y_len])):
-                y_len += 1
+            pointer = self.files['outline'].find(
+                'D', y+1)
+            temp = self.files['outline'][y+1: pointer]
+            if(temp.isnumeric()):
+                temp = abs(float(temp))/self.x_decimals
+                if(temp > self.height):
+                    self.height = temp
+            pointer = self.files['outline'].find('X', pointer)
 
-            temp = float(self.files['outline']
-                         [pointer+1: pointer+1+y_len])/self.y_decimals
-            if(temp > self.height):
-                self.height = temp
-            pointer = self.files['outline'].find('Y', pointer+1)
-
-        unit = 'mm'
+        self.unit = 'mm'
         if(self.files['outline'].find('MOIN') != -1):
-            unit = 'in'
+            self.unit = 'in'
 
         if(self.verbose):
             print('Board Dimensions: ' + str(self.width) +
-                  ' x ' + str(self.height) + ' ' + str(unit))
+                  ' x ' + str(self.height) + ' ' + str(self.unit))
 
     def get_dimensions(self):
         if(self.width):
