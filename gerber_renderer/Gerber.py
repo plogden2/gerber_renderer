@@ -12,55 +12,23 @@ from reportlab.graphics import renderPDF
 
 class Board:
     def __init__(self, file, max_height=500, verbose=False):
+        self.width = False
         self.max_height = max_height
         self.verbose = verbose
         self.temp_path = './temp_gerber_files'
 
-        if(self.verbose):
-            print('Extracting Files')
         if not os.path.exists(self.temp_path):
             os.makedirs(self.temp_path)
-        with zipfile.ZipFile(file, 'r') as zipped:
-            zipped.extractall(self.temp_path)
 
-        self.files = {}
-        self.files['drill'] = ''
-        self.files['outline'] = ''
-        self.files['top_copper'] = ''
-        self.files['top_mask'] = ''
-        self.files['top_silk'] = ''
-        self.files['bottom_copper'] = ''
-        self.files['bottom_mask'] = ''
-        self.files['bottom_silk'] = ''
-
-        # RS274X name schemes
-        for filename in os.listdir(self.temp_path):
-            if(not self.files['drill'] and filename[-3:].upper() == 'DRL'):
-                self.files['drill'] = self.open_file(filename)
-            elif(not self.files['outline'] and (filename[-3:].upper() == 'GKO' or filename[-3:].upper() == 'GM1')):
-                self.files['outline'] = self.open_file(filename)
-            elif(not self.files['top_copper'] and filename[-3:].upper() == 'GTL'):
-                self.files['top_copper'] = self.open_file(filename)
-            elif(not self.files['top_mask'] and filename[-3:].upper() == 'GTS'):
-                self.files['top_mask'] = self.open_file(filename)
-            elif(not self.files['top_silk'] and filename[-3:].upper() == 'GTO'):
-                self.files['top_silk'] = self.open_file(filename)
-            elif(not self.files['bottom_copper'] and filename[-3:].upper() == 'GBL'):
-                self.files['bottom_copper'] = self.open_file(filename)
-            elif(not self.files['bottom_mask'] and filename[-3:].upper() == 'GBS'):
-                self.files['bottom_mask'] = self.open_file(filename)
-            elif(not self.files['bottom_silk'] and filename[-3:].upper() == 'GBO'):
-                self.files['bottom_silk'] = self.open_file(filename)
-
-        shutil.rmtree(self.temp_path)
-
-        if(self.files['drill'] and self.files['outline'] and self.files['top_copper'] and self.files['top_mask']):
-            if(self.verbose):
-                print('Files Loaded')
+        if(file[-3:].upper() == 'ZIP'):
+            self.extract_files(file)
         else:
-            print('Error identifying files')
+            self.copy_files(file)
+
+        self.identify_files()
 
     def render(self, output):
+        #setup output path
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
             self.output_folder = self.output_folder[:-1]
@@ -74,7 +42,7 @@ class Board:
                 print('Rendring Top')
             self.draw_svg(layer='top', filename='top.svg')
         else:
-            print('Error identifying files')
+            print('No Top Files')
 
         # render bottom
         if(self.files['drill'] and self.files['outline'] and self.files['bottom_copper'] and self.files['bottom_mask']):
@@ -85,9 +53,9 @@ class Board:
             print('No Bottom Files')
 
     def draw_svg(self, layer, filename):
-        self.set_dimensions()
-
-        self.scale = self.max_height/self.height
+        if(not self.width):
+            self.set_dimensions()
+            self.scale = self.max_height/self.height
 
         # initialize svg
         self.drawing = svgwrite.Drawing(
@@ -108,7 +76,6 @@ class Board:
         if(self.verbose):
             print('Applying Solder Mask')
         self.init_file(self.files[layer+'_mask'])
-        # # self.area_fill(file=self.files[layer+'_mask'],  color='grey')
         self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
         if(self.files[layer+'_silk']):
@@ -118,30 +85,29 @@ class Board:
             self.init_file(self.files[layer+'_silk'])
         self.draw_macros(file=self.files[layer+'_silk'],
                          color='white')
-        # self.area_fill(file=self.files[layer+'_silk'],
-        #                color='white')
 
         # draw drill holes
         if(self.verbose):
             print('Drilling Holes')
-        # self.init_file(self.files['drill'])
         self.drill_holes()
 
         self.drawing.save()
 
     # scale compensation +0.05 = 5% bigger
     def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, full_page=True, mirrored=False, offset=(0,0)):
-        self.set_dimensions()
-
-        self.scale = 3.543307 if self.unit == 'mm' else 90
-        self.scale *= (1+scale_compensation)
-
+        #setup output path
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
             self.output_folder = self.output_folder[:-1]
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
         self.output_folder += '/'
+
+        if(not self.width):
+            self.set_dimensions()
+
+        self.scale = 3.543307 if self.unit == 'mm' else 90
+        self.scale *= (1+scale_compensation)
 
         # initialize svg
         self.drawing = svgwrite.Drawing(
@@ -155,10 +121,8 @@ class Board:
         self.init_file(self.files[layer])
         self.draw_macros(file=self.files[layer],
                          color=color)
-        # self.area_fill(file=self.files[layer],
-        #                color=color)
 
-        self.drawing.save()
+        self.drawing.save() 
 
         drawing = svg2rlg(self.output_folder+layer+".svg")
         if(mirrored):
@@ -167,6 +131,7 @@ class Board:
         drawing.translate(offset[0], offset[1])
         renderPDF.drawToFile(drawing, self.output_folder +
                              layer+".pdf", autoSize=int(not full_page))
+        os.remove(self.output_folder+layer+".svg")
 
     def draw_arcs(self, g_code, color, radius):
         index = 0
@@ -612,6 +577,61 @@ class Board:
             return [self.width, self.height, self.scale]
         else:
             return 'Board Not Rendered'
+
+    def identify_files(self):
+        unidentified_files = 0
+
+        self.files = {}
+        self.files['drill'] = ''
+        self.files['outline'] = ''
+        self.files['top_copper'] = ''
+        self.files['top_mask'] = ''
+        self.files['top_silk'] = ''
+        self.files['bottom_copper'] = ''
+        self.files['bottom_mask'] = ''
+        self.files['bottom_silk'] = ''
+
+        # RS274X name schemes
+        for filename in os.listdir(self.temp_path):
+            if(not self.files['drill'] and filename[-3:].upper() == 'DRL'):
+                self.files['drill'] = self.open_file(filename)
+            elif(not self.files['outline'] and (filename[-3:].upper() == 'GKO' or filename[-3:].upper() == 'GM1')):
+                self.files['outline'] = self.open_file(filename)
+            elif(not self.files['top_copper'] and filename[-3:].upper() == 'GTL'):
+                self.files['top_copper'] = self.open_file(filename)
+            elif(not self.files['top_mask'] and filename[-3:].upper() == 'GTS'):
+                self.files['top_mask'] = self.open_file(filename)
+            elif(not self.files['top_silk'] and filename[-3:].upper() == 'GTO'):
+                self.files['top_silk'] = self.open_file(filename)
+            elif(not self.files['bottom_copper'] and filename[-3:].upper() == 'GBL'):
+                self.files['bottom_copper'] = self.open_file(filename)
+            elif(not self.files['bottom_mask'] and filename[-3:].upper() == 'GBS'):
+                self.files['bottom_mask'] = self.open_file(filename)
+            elif(not self.files['bottom_silk'] and filename[-3:].upper() == 'GBO'):
+                self.files['bottom_silk'] = self.open_file(filename)
+            else:
+                unidentified_files +=1;
+
+        shutil.rmtree(self.temp_path)
+
+        if(self.files['drill'] and self.files['outline'] and self.files['top_copper'] and self.files['top_mask']):
+            if(self.verbose):
+                print('Files Loaded\nUnidentified Files: '+str(unidentified_files))
+
+        else:
+            print('Error identifying files')
+
+    def copy_files(self, file):
+        for item in os.listdir(file):
+            s = os.path.join(file, item)
+            d = os.path.join(self.temp_path, item)
+            shutil.copy(s, d)
+
+    def extract_files(self, file):
+        if(self.verbose):
+            print('Extracting Files')
+        with zipfile.ZipFile(file, 'r') as zipped:
+            zipped.extractall(self.temp_path)
 
     def open_file(self, filename):
         return open(self.temp_path+'/'+filename, 'r').read()
