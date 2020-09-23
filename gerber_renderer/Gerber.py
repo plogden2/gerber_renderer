@@ -87,7 +87,6 @@ class Board:
     def draw_svg(self, layer, filename):
         self.set_dimensions()
 
-        print(self.width)
         self.scale = self.max_height/self.height
 
         # initialize svg
@@ -104,13 +103,12 @@ class Board:
         self.init_file(self.files[layer+'_copper'])
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='darkgreen')
-        self.area_fill(file=self.files[layer+'_copper'],  color='darkgreen')
 
         # draw solder mask
         if(self.verbose):
             print('Applying Solder Mask')
         self.init_file(self.files[layer+'_mask'])
-        self.area_fill(file=self.files[layer+'_mask'],  color='grey')
+        # # self.area_fill(file=self.files[layer+'_mask'],  color='grey')
         self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
         if(self.files[layer+'_silk']):
@@ -118,20 +116,21 @@ class Board:
             if(self.verbose):
                 print('Curing Silk Screen')
             self.init_file(self.files[layer+'_silk'])
-            self.draw_macros(file=self.files[layer+'_silk'],
-                             color='white')
-            self.area_fill(file=self.files[layer+'_silk'],
-                           color='white')
+        self.draw_macros(file=self.files[layer+'_silk'],
+                         color='white')
+        # self.area_fill(file=self.files[layer+'_silk'],
+        #                color='white')
 
         # draw drill holes
         if(self.verbose):
             print('Drilling Holes')
+        # self.init_file(self.files['drill'])
         self.drill_holes()
 
         self.drawing.save()
 
-# scale compensation +0.05 = 5% bigger
-    def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, mirrored=False):
+    # scale compensation +0.05 = 5% bigger
+    def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, full_page=True, mirrored=False, offset=(0,0)):
         self.set_dimensions()
 
         self.scale = 3.543307 if self.unit == 'mm' else 90
@@ -156,8 +155,8 @@ class Board:
         self.init_file(self.files[layer])
         self.draw_macros(file=self.files[layer],
                          color=color)
-        self.area_fill(file=self.files[layer],
-                       color=color)
+        # self.area_fill(file=self.files[layer],
+        #                color=color)
 
         self.drawing.save()
 
@@ -165,8 +164,9 @@ class Board:
         if(mirrored):
             drawing.scale(-1, 1)
             drawing.translate(float(drawing.getBounds()[0]), 0)
+        drawing.translate(offset[0], offset[1])
         renderPDF.drawToFile(drawing, self.output_folder +
-                             layer+".pdf", autoSize=1)
+                             layer+".pdf", autoSize=int(not full_page))
 
     def draw_arcs(self, g_code, color, radius):
         index = 0
@@ -177,9 +177,10 @@ class Board:
             if(g_code[index: index+3] == 'G01'):
                 x = g_code.find('X', index)
                 y = g_code.find('Y', x)
-                x = str(float(g_code[x+1:y])/self.x_decimals*self.scale)
-                y = str(
-                    float(g_code[y+1:g_code.find('D', y)])/self.y_decimals*self.scale)
+                x = str(
+                    ((abs(float(g_code[x+1:y]))/self.x_decimals)-self.min_x)*self.scale)
+                y = str(((abs(
+                    float(g_code[y+1:g_code.find('D', y)]))/self.y_decimals)-self.min_y)*self.scale)
                 path += 'M' + x + ',' + str(float(y))
             elif(g_code[index: index+3] == 'G02' or g_code[index: index+3] == 'G03'):
                 if(g_code[index: index+3] == 'G02'):
@@ -193,37 +194,43 @@ class Board:
         self.drawing.add(self.drawing.path(
             d=path, stroke=color, stroke_width=radius*2, fill='none'))
 
-    def draw_arc(self, g_code, sweep_flag, start_pos):
+    def draw_arc(self, g_code, sweep_flag, start_pos, multiquadrant_bool=True):
         y_loc = g_code.find('Y')
         i_loc = g_code.find('I')
         d_loc = g_code.find('D')
-        x = float(g_code[4:y_loc])/self.x_decimals*self.scale
+        x = ((abs(float(g_code[4:y_loc])) /
+              self.x_decimals)-self.min_x)*self.scale
         i = 0
         j = 0
 
         if(g_code.find('J') != -1):
             j = float(g_code[g_code.find('J')+1:d_loc]) / \
-                self.x_decimals*self.scale
+                self.y_decimals*self.scale
             d_loc = g_code.find('J')
 
         if(i_loc != -1):
-            y = float(g_code[y_loc+1:i_loc])/self.y_decimals*self.scale
+            y = ((abs(float(g_code[y_loc+1:i_loc])) /
+                  self.y_decimals)-self.min_y)*self.scale
             i = float(g_code[g_code.find('I')+1:d_loc]) / \
                 self.x_decimals*self.scale
         else:
-            y = float(g_code[y_loc+1:d_loc])/self.y_decimals*self.scale
+            y = ((abs(float(g_code[y_loc+1:d_loc])) /
+                  self.y_decimals)-self.min_y)*self.scale
 
         center = (float(start_pos[0])+i, float(start_pos[1])+j)
 
         start_angle = self.find_angle(start_pos, center)
         end_angle = self.find_angle((x, y), center)
-
         if(sweep_flag == '0'):
             angle = (start_angle-end_angle)
         else:
             angle = (end_angle-start_angle)
-        if(angle < 0):
-            angle += 2
+
+        if(not multiquadrant_bool and angle > 0.5):
+            if(sweep_flag == '0'):
+                angle = (end_angle-start_angle)
+            else:
+                angle = (start_angle-end_angle)
 
         if((angle) >= 1):
             large_arc_flag = 1
@@ -241,9 +248,42 @@ class Board:
         angle = math.atan2(y, x)
         angle /= math.pi
         if(angle < 0):
-            angle = 2+angle
-        # print(angle)
+            angle += 2
         return angle
+
+    def polygon_fill(self, g_code, color, radius):
+        g_loc = 0
+        x_loc = 0
+        # find all coords and draw path
+        path = ''
+        g_loc = g_code.find('G')
+        while(True):
+            if(g_loc == -1):
+                break
+            code = g_code[g_loc:g_loc+3]
+            next_code = g_code.find('G', g_loc+1)
+            x_loc = g_code.find('X', g_loc+1)
+            while((x_loc < next_code and x_loc != -1) or (next_code == -1 and x_loc != -1)):
+                y_loc = g_code.find('Y', x_loc)
+                if(code == 'G01'):
+                    x = str(((abs(float(g_code[x_loc+1:y_loc]
+                                        ))/self.x_decimals)-self.min_x)*self.scale)
+                    y = str(
+                        ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
+                    if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02' or path == ''):
+                        path += 'M' + x + ',' + str(float(y))
+                    elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
+                        path += 'L' + x + ',' + str(float(y))
+                elif(code == 'G02' or code == 'G03'):
+                    sweep_flag = '1'
+                    path += self.draw_arc(
+                        g_code[x_loc-3:g_code.find('*', x_loc)], sweep_flag, start_pos=(x, y))
+
+                x_loc = g_code.find('X', x_loc+1)
+            g_loc = next_code
+        path += ' Z'
+        self.drawing.add(self.drawing.path(
+            d=path, stroke='none', fill=color))
 
     def area_fill(self, file, color):
         index = 0
@@ -263,48 +303,56 @@ class Board:
                         break
                     x = file.find('X', index)
                     y = file.find('Y', x)
-                    x = str(float(file[x+1:y])/self.x_decimals*self.scale)
+
+                    x = str(
+                        ((abs(float(file[x+1:y]))/self.x_decimals)-self.min_x)*self.scale)
                     y = str(
-                        float(file[y+1:file.find('D', y)])/self.y_decimals*self.scale)
+                        ((abs(float(file[y+1:file.find('D', y)]))/self.y_decimals)-self.min_y)*self.scale)
                     if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
-                        path += 'M' + x + ',' + str(float(y))
+                        path += 'M' + x + ',' + y
                     else:
-                        path += 'L' + x + ',' + str(float(y))
+                        path += 'L' + x + ',' + y
 
                 self.drawing.add(self.drawing.path(
-                    d=path, stroke='none', fill=color))
+                    d=path, stroke='black', stroke_width=10, fill=color))
 
     def drill_holes(self):
         tool_num = 1
+        leading_zero = True
         while(True):
             # get diameter index of current tool
             diameter = self.files['drill'].find('T0'+str(tool_num)+'C')
-            if(diameter == -1):
+            if(diameter == -1 and self.files['drill'].find('T'+str(tool_num)+'C') == -1):
                 break
             else:
+                if(diameter == -1):
+                    leading_zero = False
+                    diameter = self.files['drill'].find('T'+str(tool_num)+'C')
                 # draw all holes for current tool
                 curr_holes = self.files['drill'].find(
-                    'T0'+str(tool_num), diameter+4)+3
+                    'T'+('0' if leading_zero else '')+str(tool_num), diameter+4)+3
                 # get diameter of current tool
                 d_len = 0
-                while(str.isnumeric(self.files['drill'][diameter+4+d_len]) or self.files['drill'][diameter+4+d_len] == '.'):
+                increment = (4 if leading_zero else 3)
+                while(str.isnumeric(self.files['drill'][diameter+increment+d_len]) or self.files['drill'][diameter+increment+d_len] == '.'):
                     d_len += 1
                 diameter = float(self.files['drill']
-                                 [diameter+4: diameter+4+d_len])
+                                 [diameter+increment: diameter+increment+d_len])
 
-                next_tool = self.files['drill'].find('T', curr_holes)
+                next_tool = self.files['drill'].find(
+                    'T'+('0' if leading_zero else '')+str(tool_num+1), curr_holes)
                 curr_x = self.files['drill'].find('X', curr_holes)
                 curr_y = self.files['drill'].find('Y', curr_x)
 
                 # find and draw circles at hole coords
                 while(curr_x < next_tool or (next_tool == -1 and curr_x != -1)):
                     y_len = 1
-                    while(str.isnumeric(self.files['drill'][curr_y+1+y_len])):
+                    while(str.isnumeric(self.files['drill'][curr_y+1+y_len]) or self.files['drill'][curr_y+1+y_len] == '.' or self.files['drill'][curr_y+1+y_len] == '-'):
                         y_len += 1
-                    hole_x = float(self.files['drill']
-                                   [curr_x+1:curr_y])/self.x_decimals
-                    hole_y = float(self.files['drill']
-                                   [curr_y+1: curr_y+1+y_len])/self.y_decimals
+                    hole_x = (abs(float(self.files['drill']
+                                        [curr_x+1:curr_y]))-self.min_x)/(self.x_decimals if (self.files['drill'][curr_x+1:curr_y]).find('.') == -1 else 1)
+                    hole_y = (abs(float(self.files['drill']
+                                        [curr_y+1: curr_y+1+y_len]))-self.min_y)/(self.y_decimals if (self.files['drill'][curr_y+1: curr_y+1+y_len]).find('.') == -1 else 1)
                     self.drawing.add(self.drawing.circle(center=(str(hole_x*self.scale), str(hole_y*self.scale)),
                                                          r=str(diameter/2*self.scale), fill='black'))
                     curr_x = self.files['drill'].find('X', curr_y)
@@ -315,18 +363,28 @@ class Board:
     def draw_macros(self, file, color, fill='none'):
         arc_starts = list(self.arcs.keys())
         arc_starts.sort()
+        polygon_starts = list(self.polygons.keys())
+        polygon_starts.sort()
 
         for macro in self.aperture_locs:
-
-            if(self.apertures[macro[0]][0]):
-                # draw all arcs within macro
-                while(len(arc_starts) != 0):
-                    if(int(arc_starts[0]) >= int(macro[1]) and int(self.arcs[arc_starts[0]]) <= int(macro[2])):
-                        self.draw_arcs(
-                            file[int(arc_starts[0]):int(self.arcs[arc_starts[0]])], color, float(self.apertures[macro[0]][1]))
-                        del arc_starts[0]
-                    else:
-                        break
+            # draw all polygons within macro
+            while(len(polygon_starts) != 0):
+                if(int(polygon_starts[0]) >= int(macro[1]) and int(self.polygons[polygon_starts[0]]) <= int(macro[2])):
+                    self.polygon_fill(
+                        file[int(polygon_starts[0]):int(self.polygons[polygon_starts[0]])], color, float(self.apertures[macro[0]][1]))
+                    del polygon_starts[0]
+                else:
+                    break
+            # draw all arcs within macro
+                # while(len(arc_starts) != 0):
+                #     # print('woo')
+                #     if(int(arc_starts[0]) >= int(macro[1]) and int(self.arcs[arc_starts[0]]) <= int(macro[2])):
+                #         self.draw_arcs(
+                #             file[int(arc_starts[0]):int(self.arcs[arc_starts[0]])], color, float(self.apertures[macro[0]][1]))
+                #         del arc_starts[0]
+                #     else:
+                #         break
+            if(self.apertures[macro[0]][0] == 'C'):
                 # draw circle apertures
                 path = ''
 
@@ -336,10 +394,10 @@ class Board:
                 while(index < macro[2] and index != -1):
                     y_loc = file.find('Y', index)
                     if(file[y_loc+1:file.find('D', y_loc)].find('J') == -1 and file[y_loc+1:file.find('D', y_loc)].find('I') == -1):
-                        x = str(float(file[index+1:y_loc]
-                                      )/self.x_decimals*self.scale)
+                        x = str(((abs(float(file[index+1:y_loc]
+                                            ))/self.x_decimals)-self.min_x)*self.scale)
                         y = str(
-                            abs(float(file[y_loc+1:file.find('D', y_loc)]))/self.y_decimals*self.scale)
+                            ((abs(float(file[y_loc+1:file.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
                         if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
                             path += 'M' + x + ',' + str(float(y))
                         elif (file[file.find('D', index):file.find('D', index)+3] == 'D01'):
@@ -352,24 +410,62 @@ class Board:
                 if(path):
                     self.drawing.add(self.drawing.path(d=path, stroke=color,
                                                        stroke_width=float(self.apertures[macro[0]][1])*2, fill=fill))
-            # draw rectangular apertures
-            else:
+
+            elif(self.apertures[macro[0]][0] == 'O'):
+                # draw obround apertures
+                path = ''
+
+                # find first x
                 index = file.find('X', macro[1])
+
                 while(index < macro[2] and index != -1):
-                    y = file.find('Y', index)
-                    width = float(self.apertures[macro[0]][1])
-                    height = float(self.apertures[macro[0]][2])
+                    y_loc = file.find('Y', index)
+                    if(file[y_loc+1:file.find('D', y_loc)].find('J') == -1 and file[y_loc+1:file.find('D', y_loc)].find('I') == -1):
+                        x = str(((abs(float(file[index+1:y_loc]
+                                            ))/self.x_decimals)-self.min_x)*self.scale)
+                        y = str(
+                            ((abs(float(file[y_loc+1:file.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
+                        if(file[file.find('D', index):file.find('D', index)+3] == 'D02'):
+                            path += 'M' + x + ',' + str(float(y))
+                        elif (file[file.find('D', index):file.find('D', index)+3] == 'D01'):
+                            path += 'L' + x + ',' + str(float(y))
 
-                    x = str(
-                        float(file[index+1:y])/self.x_decimals*self.scale-float(width)/2)
-
-                    y = str(
-                        abs(float(file[y+1: file.find('D', y+1)]))/self.y_decimals*self.scale-float(height)/2)
-
-                    # draw rect
-                    self.drawing.add(self.drawing.rect(insert=(x, y), size=(
-                        width, height), fill=color))
+                        self.drawing.add(self.drawing.ellipse(center=(x, y),
+                                                              r=(str(float(self.apertures[macro[0]][1])/2), str(float(self.apertures[macro[0]][2])/2)), fill=color))
                     index = file.find('X', index+1)
+
+                if(path):
+                    self.drawing.add(self.drawing.path(d=path, stroke=color,
+                                                       stroke_width=float(self.apertures[macro[0]][1])*2, fill=fill))
+
+            # draw rectangular apertures
+            elif(self.apertures[macro[0]][0] == 'R'):
+                g_loc = file.find('G', macro[1])
+                if(g_loc == -1):
+                    g_loc = macro[2]
+                index = file.find('X', macro[1])
+                while(index < g_loc and index != -1):
+                    y = file.find('Y', index)
+                    if(file[y+1:file.find('D', y)].find('J') == -1 and file[y+1:file.find('D', y)].find('I') == -1):
+                        width = float(self.apertures[macro[0]][1])
+                        height = float(self.apertures[macro[0]][2])
+
+                        x = str(
+                            ((abs(float(file[index+1:y]))/self.x_decimals)-self.min_x)*self.scale-float(width)/2)
+
+                        y = str(
+                            ((abs(float(file[y+1: file.find('D', y+1)]))/self.y_decimals)-self.min_y)*self.scale-float(height)/2)
+
+                        # draw rect
+                        self.drawing.add(self.drawing.rect(insert=(x, y), size=(
+                            width, height), fill=color))
+                        index = file.find('X', index+1)
+
+    def store_polygons(self, file):
+        self.polygons = {}
+        # store all polygons start_location: end location
+        for i in self.find_all_groups(file, 'G36', 'G37'):
+            self.polygons[i[0]] = i[1]
 
     def store_arcs(self, file):
         self.arcs = {}
@@ -397,13 +493,27 @@ class Board:
         while(index != -1):
             profile = []
             a_id = file[index+3:index+5]
-            profile.append(file[index+4] == 'C' or file[index+5] == 'C')
-            if(profile[0]):
+            if(not file[index+4].isnumeric()):
+                profile.append(file[index+4])
+            else:
+                profile.append(file[index+5])
+            # single dimension
+            if(file.find('X', index, file.find('*', index)) == -1):
                 profile.append(str(float(file[file.find(
                     ',', index)+1: file.find('*', index)])/2 * self.scale))
+            # two dimensions
+            elif(file.find('X', file.find('X', index)+1, file.find('*', index)) == -1):
+                profile.append(str(float(file[file.find(
+                    ',', index)+1: file.find('X', index)]) * self.scale))
+                profile.append(str(float(file[file.find(
+                    'X', index)+1: file.find('*', index)]) * self.scale))
+            # three dimensions
             else:
                 profile.append(str(float(file[file.find(
                     ',', index)+1: file.find('X', index)]) * self.scale))
+                profile.append(str(float(file[file.find(
+                    'X', index)+1: file.find('X', file.find(
+                        'X', index)+1)]) * self.scale))
                 profile.append(str(float(file[file.find(
                     'X', index)+1: file.find('*', index)]) * self.scale))
             self.apertures[a_id] = (profile)
@@ -429,9 +539,6 @@ class Board:
                 end_pos = len(file)
             else:
                 end_pos = self.aperture_locs[i+1][1]
-            temp_pos = file.find('G36', start_pos, end_pos)
-            if(temp_pos != -1):
-                end_pos = temp_pos
             # temp_pos = file.find('G74', start_pos, end_pos)
             # if(temp_pos != -1):
             #     end_pos = temp_pos
@@ -468,6 +575,8 @@ class Board:
         self.set_decimal_places(self.files['outline'])
         self.width = 0
         self.height = 0
+        self.min_x = 9999999
+        self.min_y = 9999999
         pointer = self.files['outline'].find('D10')
         pointer = self.files['outline'].find('X', pointer)
         while(pointer != -1):
@@ -476,23 +585,27 @@ class Board:
                 self.files['outline'][pointer+1: y]))/self.x_decimals
             if(temp > self.width):
                 self.width = temp
+            if(temp < self.min_x):
+                self.min_x = temp
 
             pointer = self.files['outline'].find(
                 'D', y+1)
             temp = self.files['outline'][y+1: pointer]
-            if(temp.isnumeric()):
-                temp = abs(float(temp))/self.x_decimals
-                if(temp > self.height):
-                    self.height = temp
+            temp = abs(float(temp))/self.y_decimals
+            if(temp > self.height):
+                self.height = temp
+            if(temp < self.min_y):
+                self.min_y = temp
             pointer = self.files['outline'].find('X', pointer)
-
+        self.width -= self.min_x
+        self.height -= self.min_y
         self.unit = 'mm'
         if(self.files['outline'].find('MOIN') != -1):
             self.unit = 'in'
 
         if(self.verbose):
-            print('Board Dimensions: ' + str(self.width) +
-                  ' x ' + str(self.height) + ' ' + str(self.unit))
+            print('Board Dimensions: ' + str(round(self.width, 2)) +
+                  ' x ' + str(round(self.height, 2)) + ' ' + str(self.unit))
 
     def get_dimensions(self):
         if(self.width):
@@ -507,4 +620,5 @@ class Board:
         self.set_decimal_places(file)
         self.store_apertures(file)
         self.find_aperture_locations(file)
+        self.store_polygons(file)
         self.store_arcs(file)
