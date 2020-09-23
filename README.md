@@ -1,4 +1,3 @@
-
 ## Gerber Renderer
 
 Python library for rendering RS274X gerber PCB files as svgs or pdfs.
@@ -161,10 +160,10 @@ Python library for rendering RS274X gerber PCB files as svgs or pdfs.
     <h3>Render SVG</h3>
     <pre><span></span><span class="n">from gerber_renderer import Gerber<br><br>board = Gerber.Board('./tests/gerber.zip', verbose=True)<br>board.render('./tests/output')</span></pre>
     <h4>Output</h4>
-    <img height='200' src='./gerber-renderer-documentation_files/top.svg'>
-    <img height='200' src='./gerber-renderer-documentation_files/bottom.svg'>
+    <img height='200' src='./documentation/gerber-renderer-documentation_files/top.svg'>
+    <img height='200' src='./documentation/gerber-renderer-documentation_files/bottom.svg'>
     <h3>Render PDF</h3>
     <pre><span></span><span class="n">from gerber_renderer import Gerber<br><br>board = Gerber.Board('./tests/gerber.zip', verbose=True)<br>board.render_pdf('./tests/output', 'top_copper', 'white', full_page=True)</span></pre>
     <h4>Output</h4>
-    <a href='./gerber-renderer-documentation_files/top_copper.pdf'>Result</a>
+    <a href='./documentation/gerber-renderer-documentation_files/top_copper.pdf'>Result</a>
 </div>
