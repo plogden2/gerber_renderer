@@ -69,6 +69,8 @@ class Board:
         if(self.verbose):
             print('Etching Copper')
         self.init_file(self.files[layer+'_copper'])
+        self.area_fill(file=self.files[layer+'_copper'],
+                         color='darkgreen')
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='darkgreen')
 
@@ -76,15 +78,15 @@ class Board:
         if(self.verbose):
             print('Applying Solder Mask')
         self.init_file(self.files[layer+'_mask'])
-        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+        # self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
-        if(self.files[layer+'_silk']):
-            # draw silk screen
-            if(self.verbose):
-                print('Curing Silk Screen')
-            self.init_file(self.files[layer+'_silk'])
-        self.draw_macros(file=self.files[layer+'_silk'],
-                         color='white')
+        # if(self.files[layer+'_silk']):
+        #     # draw silk screen
+        #     if(self.verbose):
+        #         print('Curing Silk Screen')
+        #     self.init_file(self.files[layer+'_silk'])
+        # self.draw_macros(file=self.files[layer+'_silk'],
+        #                  color='white')
 
         # draw drill holes
         if(self.verbose):
@@ -124,6 +126,7 @@ class Board:
 
         self.drawing.save() 
 
+        #convert svg drawing to pdf
         drawing = svg2rlg(self.output_folder+layer+".svg")
         if(mirrored):
             drawing.scale(-1, 1)
@@ -452,16 +455,15 @@ class Board:
         return arr
 
     def store_apertures(self, file):
-        # [[id,circle_bool, radius, additional rect dimention]]
+        # [[id,type, radius, additional rect dimention]]
         self.apertures = {}
         index = file.find('ADD')
         while(index != -1):
             profile = []
-            a_id = file[index+3:index+5]
-            if(not file[index+4].isnumeric()):
-                profile.append(file[index+4])
-            else:
-                profile.append(file[index+5])
+            id_end = file.find(',', index)-1
+            a_id = file[index+3:id_end]
+            # store macro type
+            profile.append(file[id_end])
             # single dimension
             if(file.find('X', index, file.find('*', index)) == -1):
                 profile.append(str(float(file[file.find(
@@ -487,10 +489,8 @@ class Board:
     def find_aperture_locations(self, file):
         self.aperture_locs = []
         for aperture in self.apertures.keys():
-            locs = [j.start()
-                    for j in re.finditer('(?=D'+str(aperture)+')', file)]
-            for i in locs[1:]:
-                self.aperture_locs.append((aperture, i))
+            i = file.find('D'+str(aperture)+'*')
+            self.aperture_locs.append((aperture, i))
         self.aperture_locs.sort(key=self.aperture_sort)
         self.find_macro_endings(file)
 
@@ -504,12 +504,6 @@ class Board:
                 end_pos = len(file)
             else:
                 end_pos = self.aperture_locs[i+1][1]
-            # temp_pos = file.find('G74', start_pos, end_pos)
-            # if(temp_pos != -1):
-            #     end_pos = temp_pos
-            # temp_pos = file.find('G75', start_pos, end_pos)
-            # if(temp_pos != -1):
-            #     end_pos = temp_pos
             self.aperture_locs[i] += (end_pos,)
 
     def select_aperture(self, file, id, ref_index):
