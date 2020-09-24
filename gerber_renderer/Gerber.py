@@ -72,12 +72,6 @@ class Board:
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='darkgreen')
 
-        # draw solder mask
-        if(self.verbose):
-            print('Applying Solder Mask')
-        self.init_file(self.files[layer+'_mask'])
-        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
-
         if(self.files[layer+'_silk']):
             # draw silk screen
             if(self.verbose):
@@ -85,6 +79,12 @@ class Board:
             self.init_file(self.files[layer+'_silk'])
         self.draw_macros(file=self.files[layer+'_silk'],
                          color='white')
+
+        # draw solder mask
+        if(self.verbose):
+            print('Applying Solder Mask')
+        self.init_file(self.files[layer+'_mask'])
+        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
         # draw drill holes
         if(self.verbose):
@@ -286,7 +286,10 @@ class Board:
                     elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
                         path += 'L' + x + ',' + str(float(y))
                 elif(code == 'G02' or code == 'G03'):
-                    sweep_flag = '1'
+                    if(code == 'G02'):
+                        sweep_flag = '0'
+                    else:
+                        sweep_flag = '1'
                     path += self.draw_arc(
                         g_code[x_loc-3:g_code.find('*', x_loc)], sweep_flag, start_pos=(x, y))
 
