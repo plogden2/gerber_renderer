@@ -27,7 +27,8 @@ class Board:
 
         self.identify_files()
 
-    def render(self, output):
+    def render(self, output, silk=True):
+        self.silk_bool = silk
         # setup output path
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
@@ -63,33 +64,38 @@ class Board:
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
-            str(self.width*self.scale), str(self.height*self.scale)), fill='green'))
-
-        # draw copper layer
+            str(self.width*self.scale), str(self.height*self.scale)), fill='#f0e6aa'))
         if(self.verbose):
-            print('Etching Copper')
-        self.init_file(self.files[layer+'_copper'])
-        self.draw_macros(file=self.files[layer+'_copper'],
-                         color='darkgreen')
+            print('Milling Outline')
+        self.init_file(self.files['outline'])
+        self.draw_macros(file=self.files['outline'],
+                         color='green')
 
-        if(self.files[layer+'_silk']):
-            # draw silk screen
-            if(self.verbose):
-                print('Curing Silk Screen')
-            self.init_file(self.files[layer+'_silk'])
-        self.draw_macros(file=self.files[layer+'_silk'],
-                         color='white')
+        # # draw copper layer
+        # if(self.verbose):
+        #     print('Etching Copper')
+        # self.init_file(self.files[layer+'_copper'])
+        # self.draw_macros(file=self.files[layer+'_copper'],
+        #                  color='darkgreen')
 
-        # draw solder mask
-        if(self.verbose):
-            print('Applying Solder Mask')
-        self.init_file(self.files[layer+'_mask'])
-        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+        # if(self.files[layer+'_silk'] and self.silk_bool):
+        #     # draw silk screen
+        #     if(self.verbose):
+        #         print('Curing Silk Screen')
+        #     self.init_file(self.files[layer+'_silk'])
+        #     self.draw_macros(file=self.files[layer+'_silk'],
+        #                      color='white')
 
-        # draw drill holes
-        if(self.verbose):
-            print('Drilling Holes')
-        self.drill_holes()
+        # # draw solder mask
+        # if(self.verbose):
+        #     print('Applying Solder Mask')
+        # self.init_file(self.files[layer+'_mask'])
+        # self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+
+        # # draw drill holes
+        # if(self.verbose):
+        #     print('Drilling Holes')
+        # self.drill_holes()
 
         self.drawing.save()
 
@@ -135,7 +141,11 @@ class Board:
 
     def draw_macros(self, file, color, fill='none'):
         for macro in self.aperture_locs:
-            self.draw_section(file[macro[1]:macro[2]], macro[0], color)
+            if(file == self.files['outline']):
+                g_code = self.reorder_moves(file[macro[1]:macro[2]])
+                self.polygon_fill(g_code, color)
+            else:
+                self.draw_section(file[macro[1]:macro[2]], macro[0], color)
 
     def draw_section(self, g_code, a_id, color):
         radius = float(self.apertures[a_id][1])
@@ -160,7 +170,7 @@ class Board:
             if(code == 'G36'):
                 next_code = g_code.find('G37', g_loc)
                 self.polygon_fill(
-                    g_code[g_loc:next_code], color, radius)
+                    g_code[g_loc:next_code], color)
                 g_loc = g_code.find('G', next_code+1)
             else:
                 next_code = g_code.find('G', g_loc+1)
@@ -191,7 +201,7 @@ class Board:
                         else:
                             print(shape)
                     elif(code == 'G02' or code == 'G03'):
-                        if(code == 'G02'):
+                        if(code == 'G03'):
                             sweep_flag = '0'
                         else:
                             sweep_flag = '1'
@@ -262,12 +272,43 @@ class Board:
             angle += 2
         return angle
 
-    def polygon_fill(self, g_code, color, radius):
+    def arc_end_location(self, g_code):
+        y_loc = g_code.find('Y')
+        i_loc = g_code.find('I')
+        d_loc = g_code.find('D')
+        x = ((abs(float(g_code[g_code.find('X')+1:y_loc]
+                        ))/self.x_decimals)-self.min_x)*self.scale
+        i = 0
+        j = 0
+
+        if(g_code.find('J') != -1):
+            j = float(g_code[g_code.find('J')+1:d_loc]) / \
+                self.y_decimals*self.scale
+            d_loc = g_code.find('J')
+
+        if(i_loc != -1):
+            y = ((abs(float(g_code[y_loc+1:i_loc])) /
+                  self.y_decimals)-self.min_y)*self.scale
+            i = float(g_code[g_code.find('I')+1:d_loc]) / \
+                self.x_decimals*self.scale
+        else:
+            y = ((abs(float(g_code[y_loc+1:d_loc])) /
+                  self.y_decimals)-self.min_y)*self.scale
+
+        return(round(x, 2), round(y, 2))
+
+    def polygon_fill(self, g_code, color):
         g_loc = 0
         x_loc = 0
         # find all coords and draw path
         path = ''
+
         g_loc = g_code.find('G')
+        # case where no g code is present for first move
+        x_loc = g_code.find('X')
+        if(x_loc < g_loc or g_loc == -1):
+            g_code = 'G01*' + g_code[x_loc:]
+            g_loc = 0
         while(True):
             if(g_loc == -1):
                 break
@@ -283,21 +324,26 @@ class Board:
                         ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
                     if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02' or path == ''):
                         path += 'M' + x + ',' + str(float(y))
+                        self.drawing.add(self.drawing.circle(
+                            center=(x, y), r=1, fill='red'))
                     elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
                         path += 'L' + x + ',' + str(float(y))
+
                 elif(code == 'G02' or code == 'G03'):
-                    if(code == 'G02'):
+                    if(code == 'G03'):
                         sweep_flag = '0'
                     else:
                         sweep_flag = '1'
                     path += self.draw_arc(
                         g_code[x_loc-3:g_code.find('*', x_loc)], sweep_flag, start_pos=(x, y))
+                    # self.drawing.add(self.drawing.circle(
+                    #     center=(x, y), r=1, fill='blue'))
 
                 x_loc = g_code.find('X', x_loc+1)
             g_loc = next_code
-        path += ' Z'
+        path += ' z'
         self.drawing.add(self.drawing.path(
-            d=path, stroke='none', fill=color))
+            d=path, stroke='black', fill=color))
 
     def drill_holes(self):
         tool_num = 1
@@ -342,6 +388,37 @@ class Board:
                     curr_y = self.files['drill'].find('Y', curr_x)
 
                 tool_num += 1
+
+    def reorder_moves(self, g_code):
+        subsections = {}  # move_command = start index, index of next move
+        arc_locs = []
+        moves = []
+        x_loc = g_code.find('X')
+        while(x_loc != -1):
+            y_loc = g_code.find('Y', x_loc)
+            if(g_code[y_loc+1:g_code.find('D', y_loc)].find('J') == -1 and g_code[y_loc+1:g_code.find('D', y_loc)].find('I') == -1):
+                x = ((abs(float(g_code[x_loc+1:y_loc]
+                                ))/self.x_decimals)-self.min_x)*self.scale
+                y = ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)])
+                          )/self.y_decimals)-self.min_y)*self.scale
+                if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02'):
+                    moves.append([(round(x, 2), round(y, 2)), x_loc])
+                # elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
+                #     path += 'L' + x + ',' + str(float(y))
+
+            else:
+                arc_locs.append(self.arc_end_location(
+                    g_code[x_loc:g_code.find('*', x_loc)]))
+
+            x_loc = g_code.find('X', x_loc+1)
+        for i in range(len(moves)):
+            # print(moves[i])
+            try:
+                print(arc_locs.index(moves[i][0]))
+            except:
+                pass
+
+        return g_code
 
     def find_all_groups(self, file, start, end):
         arr = []
@@ -431,35 +508,40 @@ class Board:
         self.y_decimals = int(temp)
 
     def set_dimensions(self):
-        self.set_decimal_places(self.files['outline'])
+        file = self.files['outline']
+        self.set_decimal_places(file)
         self.width = 0
         self.height = 0
         self.min_x = 9999999
         self.min_y = 9999999
-        pointer = self.files['outline'].find('D10')
-        pointer = self.files['outline'].find('X', pointer)
+        pointer = file.find('D10')
+        pointer = file.find('X', pointer)
         while(pointer != -1):
-            y = self.files['outline'].find('Y', pointer+1)
+            y = file.find('Y', pointer+1)
             temp = abs(float(
-                self.files['outline'][pointer+1: y]))/self.x_decimals
+                file[pointer+1: y]))/self.x_decimals
             if(temp > self.width):
                 self.width = temp
             if(temp < self.min_x):
                 self.min_x = temp
 
-            pointer = self.files['outline'].find(
+            pointer = file.find(
                 'D', y+1)
-            temp = self.files['outline'][y+1: pointer]
+            if(file[y+1:pointer].find('I') != -1):
+                pointer = file.find('I', y+1, pointer)
+            if(file[y+1:pointer].find('J') != -1):
+                pointer = file.find('J', y+1, pointer)
+            temp = file[y+1: pointer]
             temp = abs(float(temp))/self.y_decimals
             if(temp > self.height):
                 self.height = temp
             if(temp < self.min_y):
                 self.min_y = temp
-            pointer = self.files['outline'].find('X', pointer)
+            pointer = file.find('X', pointer)
         self.width -= self.min_x
         self.height -= self.min_y
         self.unit = 'mm'
-        if(self.files['outline'].find('MOIN') != -1):
+        if(file.find('MOIN') != -1):
             self.unit = 'in'
 
         if(self.verbose):
