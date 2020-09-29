@@ -8,6 +8,7 @@ from svgwrite import cm, mm, inch
 from svglib.svglib import svg2rlg
 import reportlab.graphics as graphics
 from reportlab.graphics import renderPDF
+from reportlab.pdfgen import canvas
 
 
 class Board:
@@ -65,37 +66,38 @@ class Board:
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
             str(self.width*self.scale), str(self.height*self.scale)), fill='#f0e6aa'))
+
         if(self.verbose):
             print('Milling Outline')
         self.init_file(self.files['outline'])
         self.draw_macros(file=self.files['outline'],
                          color='green')
 
-        # # draw copper layer
-        # if(self.verbose):
-        #     print('Etching Copper')
-        # self.init_file(self.files[layer+'_copper'])
-        # self.draw_macros(file=self.files[layer+'_copper'],
-        #                  color='darkgreen')
+        # draw copper layer
+        if(self.verbose):
+            print('Etching Copper')
+        self.init_file(self.files[layer+'_copper'])
+        self.draw_macros(file=self.files[layer+'_copper'],
+                         color='darkgreen')
 
-        # if(self.files[layer+'_silk'] and self.silk_bool):
-        #     # draw silk screen
-        #     if(self.verbose):
-        #         print('Curing Silk Screen')
-        #     self.init_file(self.files[layer+'_silk'])
-        #     self.draw_macros(file=self.files[layer+'_silk'],
-        #                      color='white')
+        if(self.files[layer+'_silk'] and self.silk_bool):
+            # draw silk screen
+            if(self.verbose):
+                print('Curing Silk Screen')
+            self.init_file(self.files[layer+'_silk'])
+            self.draw_macros(file=self.files[layer+'_silk'],
+                             color='white')
 
-        # # draw solder mask
-        # if(self.verbose):
-        #     print('Applying Solder Mask')
-        # self.init_file(self.files[layer+'_mask'])
-        # self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+        # draw solder mask
+        if(self.verbose):
+            print('Applying Solder Mask')
+        self.init_file(self.files[layer+'_mask'])
+        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
 
-        # # draw drill holes
-        # if(self.verbose):
-        #     print('Drilling Holes')
-        # self.drill_holes()
+        # draw drill holes
+        if(self.verbose):
+            print('Drilling Holes')
+        self.drill_holes()
 
         self.drawing.save()
 
@@ -112,11 +114,10 @@ class Board:
             self.set_dimensions()
 
         self.scale = 3.543307 if self.unit == 'mm' else 90
-        self.scale *= (1+scale_compensation)
 
         # initialize svg
         self.drawing = svgwrite.Drawing(
-            filename=self.output_folder+layer+'.svg', size=(self.width*self.scale, self.height*self.scale), debug=False)
+            filename=self.output_folder+layer+'.svg', size=(self.width*self.scale+offset[0], self.height*self.scale+offset[1]), debug=False)
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
@@ -133,17 +134,23 @@ class Board:
         drawing = svg2rlg(self.output_folder+layer+".svg")
         if(mirrored):
             drawing.scale(-1, 1)
-            drawing.translate(float(drawing.getBounds()[0]), 0)
-        drawing.translate(offset[0], -offset[1])
-        renderPDF.drawToFile(drawing, self.output_folder +
+            drawing.translate(-self.width*self.scale *
+                              (1+scale_compensation[0])-offset[0]*2, 0)
+        # drawing.rotate(-90)
+        drawing.translate(offset[0], 0)
+        drawing.scale(1+scale_compensation[0], 1+scale_compensation[1])
+        drawing.translate(0, -offset[1])
+        d = graphics.shapes.Drawing(self.width*self.scale*(
+            1+scale_compensation[0])+offset[0], self.height*self.scale*(1+scale_compensation[1])+offset[1])
+        d.add(drawing)
+        renderPDF.drawToFile(d, self.output_folder +
                              layer+".pdf", autoSize=int(not full_page))
         os.remove(self.output_folder+layer+".svg")
 
     def draw_macros(self, file, color, fill='none'):
         for macro in self.aperture_locs:
             if(file == self.files['outline']):
-                g_code = self.reorder_moves(file[macro[1]:macro[2]])
-                self.polygon_fill(g_code, color)
+                self.polygon_fill(file[macro[1]:macro[2]], color)
             else:
                 self.draw_section(file[macro[1]:macro[2]], macro[0], color)
 
@@ -182,26 +189,31 @@ class Board:
                             ((abs(float(g_code[x_loc+1:y_loc]))/self.x_decimals)-self.min_x)*self.scale)
                         y = str(
                             ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
-                        if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02' or path == ''):
+                        d_code = g_code[g_code.find(
+                            'D', x_loc):g_code.find('D', x_loc)+3]
+                        if(d_code == 'D02' or path == ''):
                             path += 'M' + x + ',' + y
-                        elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
+                            if(g_code.find('D01', y_loc, g_code.find('D02', g_code.find('D', x_loc)+3)) != -1 and shape == 'C'):
+                                self.drawing.add(self.drawing.circle(
+                                    center=(x, y), r=radius, fill=color))
+                        elif (d_code == 'D01'):
                             path += 'L' + x + ',' + y
-
-                        if(shape == 'C'):
-                            self.drawing.add(self.drawing.circle(
-                                center=(x, y), r=radius, fill=color))
-                        elif(shape == 'O'):
-                            self.drawing.add(self.drawing.ellipse(center=(x, y), r=(str(float(
-                                self.apertures[a_id][1])/2), str(float(self.apertures[a_id][2])/2)), fill=color))
-                        elif(shape == 'R'):
-                            width = float(self.apertures[a_id][1])
-                            height = float(self.apertures[a_id][2])
-                            self.drawing.add(self.drawing.rect(insert=(str(float(
-                                x)-width/2), str(float(y)-height/2)), size=(str(width), str(height)), fill=color))
-                        else:
-                            print(shape)
+                        if(d_code == 'D01' or d_code == 'D03'):
+                            if(shape == 'C'):
+                                self.drawing.add(self.drawing.circle(
+                                    center=(x, y), r=radius, fill=color))
+                            elif(shape == 'O'):
+                                self.drawing.add(self.drawing.ellipse(center=(x, y), r=(str(float(
+                                    self.apertures[a_id][1])/2), str(float(self.apertures[a_id][2])/2)), fill=color))
+                            elif(shape == 'R'):
+                                width = float(self.apertures[a_id][1])
+                                height = float(self.apertures[a_id][2])
+                                self.drawing.add(self.drawing.rect(insert=(str(float(
+                                    x)-width/2), str(float(y)-height/2)), size=(str(width), str(height)), fill=color))
+                            else:
+                                print(shape)
                     elif(code == 'G02' or code == 'G03'):
-                        if(code == 'G03'):
+                        if(code == 'G02'):
                             sweep_flag = '0'
                         else:
                             sweep_flag = '1'
@@ -272,31 +284,6 @@ class Board:
             angle += 2
         return angle
 
-    def arc_end_location(self, g_code):
-        y_loc = g_code.find('Y')
-        i_loc = g_code.find('I')
-        d_loc = g_code.find('D')
-        x = ((abs(float(g_code[g_code.find('X')+1:y_loc]
-                        ))/self.x_decimals)-self.min_x)*self.scale
-        i = 0
-        j = 0
-
-        if(g_code.find('J') != -1):
-            j = float(g_code[g_code.find('J')+1:d_loc]) / \
-                self.y_decimals*self.scale
-            d_loc = g_code.find('J')
-
-        if(i_loc != -1):
-            y = ((abs(float(g_code[y_loc+1:i_loc])) /
-                  self.y_decimals)-self.min_y)*self.scale
-            i = float(g_code[g_code.find('I')+1:d_loc]) / \
-                self.x_decimals*self.scale
-        else:
-            y = ((abs(float(g_code[y_loc+1:d_loc])) /
-                  self.y_decimals)-self.min_y)*self.scale
-
-        return(round(x, 2), round(y, 2))
-
     def polygon_fill(self, g_code, color):
         g_loc = 0
         x_loc = 0
@@ -324,26 +311,22 @@ class Board:
                         ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
                     if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02' or path == ''):
                         path += 'M' + x + ',' + str(float(y))
-                        self.drawing.add(self.drawing.circle(
-                            center=(x, y), r=1, fill='red'))
                     elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
                         path += 'L' + x + ',' + str(float(y))
 
                 elif(code == 'G02' or code == 'G03'):
-                    if(code == 'G03'):
+                    if(code == 'G02'):
                         sweep_flag = '0'
                     else:
                         sweep_flag = '1'
                     path += self.draw_arc(
                         g_code[x_loc-3:g_code.find('*', x_loc)], sweep_flag, start_pos=(x, y))
-                    # self.drawing.add(self.drawing.circle(
-                    #     center=(x, y), r=1, fill='blue'))
 
                 x_loc = g_code.find('X', x_loc+1)
             g_loc = next_code
         path += ' z'
         self.drawing.add(self.drawing.path(
-            d=path, stroke='black', fill=color))
+            d=path, stroke='none', fill=color))
 
     def drill_holes(self):
         tool_num = 1
@@ -388,37 +371,6 @@ class Board:
                     curr_y = self.files['drill'].find('Y', curr_x)
 
                 tool_num += 1
-
-    def reorder_moves(self, g_code):
-        subsections = {}  # move_command = start index, index of next move
-        arc_locs = []
-        moves = []
-        x_loc = g_code.find('X')
-        while(x_loc != -1):
-            y_loc = g_code.find('Y', x_loc)
-            if(g_code[y_loc+1:g_code.find('D', y_loc)].find('J') == -1 and g_code[y_loc+1:g_code.find('D', y_loc)].find('I') == -1):
-                x = ((abs(float(g_code[x_loc+1:y_loc]
-                                ))/self.x_decimals)-self.min_x)*self.scale
-                y = ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)])
-                          )/self.y_decimals)-self.min_y)*self.scale
-                if(g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D02'):
-                    moves.append([(round(x, 2), round(y, 2)), x_loc])
-                # elif (g_code[g_code.find('D', x_loc):g_code.find('D', x_loc)+3] == 'D01'):
-                #     path += 'L' + x + ',' + str(float(y))
-
-            else:
-                arc_locs.append(self.arc_end_location(
-                    g_code[x_loc:g_code.find('*', x_loc)]))
-
-            x_loc = g_code.find('X', x_loc+1)
-        for i in range(len(moves)):
-            # print(moves[i])
-            try:
-                print(arc_locs.index(moves[i][0]))
-            except:
-                pass
-
-        return g_code
 
     def find_all_groups(self, file, start, end):
         arr = []
@@ -498,14 +450,8 @@ class Board:
         index = file.find('FSLAX')
         self.x_decimals = int(file[index+6:index+7])
         self.y_decimals = int(file[index+9:index+10])
-        temp = '1'
-        for i in range(self.x_decimals):
-            temp += '0'
-        self.x_decimals = int(temp)
-        temp = '1'
-        for i in range(self.y_decimals):
-            temp += '0'
-        self.y_decimals = int(temp)
+        self.x_decimals = pow(10, int(self.x_decimals))
+        self.y_decimals = pow(10, int(self.y_decimals))
 
     def set_dimensions(self):
         file = self.files['outline']
@@ -550,7 +496,9 @@ class Board:
 
     def get_dimensions(self):
         if(self.width):
-            return [self.width, self.height, self.scale]
+            if(self.unit == 'in'):
+                return [self.width*25.4, self.height*25.4]
+            return [self.width, self.height]
         else:
             return 'Board Not Rendered'
 

@@ -1,0 +1,3 @@
+/dist
+.build
+/gerber_renderer.egg-info
