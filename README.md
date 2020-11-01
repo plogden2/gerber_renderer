@@ -7,7 +7,6 @@ Python library for rendering RS274X gerber PCB files as svgs or pdfs.
 <div class="container-xl">
         <div class="row">
             <div class="col-12 col-md-2 bd-sidebar">
-                <nav class="bd-links" id="bd-docs-nav" aria-label="Main navigation">
                     <div class="bd-toc-item active">
                         <ul class="nav bd-sidenav">
                             <li class="">
@@ -22,7 +21,6 @@ Python library for rendering RS274X gerber PCB files as svgs or pdfs.
                             </li>
                         </ul>
                     </div>
-                </nav>
             </div>
         </div>
 </div>

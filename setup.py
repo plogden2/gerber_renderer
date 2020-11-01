@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gerber_renderer",  # Replace with your own username
-    version="0.0.51",
+    version="0.1.2",
     author="Patrick Ogden",
     author_email="plogden2@gmail.com",
-    description="A library for rendering gerber files as SVGs",
+    description="A library for rendering gerber files as SVGs and PDFs",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Pitwuk/gerber_renderer",
@@ -20,6 +20,9 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
-        'svgwrite >= 1.4'
+        'svgwrite >= 1.4',
+        'reportlab >= 3.5',
+        'svglib >= 1.0'
+
     ]
 )

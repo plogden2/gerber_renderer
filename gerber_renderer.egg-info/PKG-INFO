@@ -1,23 +1,178 @@
 Metadata-Version: 2.1
 Name: gerber-renderer
-Version: 0.0.51
-Summary: A library for rendering gerber files as SVGs
+Version: 0.1.2
+Summary: A library for rendering gerber files as SVGs and PDFs
 Home-page: https://github.com/Pitwuk/gerber_renderer
 Author: Patrick Ogden
 Author-email: plogden2@gmail.com
 License: UNKNOWN
-Description: # gerber_renderer
+Description: ## Gerber Renderer
         
-        Python library for rendering RS274X gerber PCB files as svgs.
+        Python library for rendering RS274X gerber PCB files as svgs or pdfs.
         
-        Installation: 
-        pip install gerber-renderer
+        ## Table of contents
         
-        Example Usage: 
-        from gerber_renderer import Gerber
-        board = Gerber.Board('filepath/gerber.zip', verbose=True) 
-        board.render('filepath/output') 
-        print(board.get_dimensions())
+        <div class="container-xl">
+                <div class="row">
+                    <div class="col-12 col-md-2 bd-sidebar">
+                            <div class="bd-toc-item active">
+                                <ul class="nav bd-sidenav">
+                                    <li class="">
+                                        <a href="#installation">Installation</a>
+                                    </li>
+                                    <li class="">
+                                        <a href="#usage">
+                                            Usage</a>
+                                    </li>
+                                    <li class="">
+                                        <a href="#examples">Examples</a>
+                                    </li>
+                                </ul>
+                            </div>
+                    </div>
+                </div>
+        </div>
+        
+        <div>
+            <div class="section" id="installation">
+                <span id="install"></span>
+                <h1>Installation</h1>
+                <p>The easiest way to install pandas is to install it
+                    via pip from <a class="reference external"
+                        href="https://pypi.org/project/gerber-renderer/">PyPI</a>.</p>
+                <p>Officially Python 3.6 and above.</p>
+            </div>
+        
+        <div class="section" id="installing-from-pypi">
+        <h3>Installing from PyPI</h3>
+        <div class="highlight-default notranslate">
+        <div class="highlight">
+            <pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">gerber-renderer</span></pre>
+        </div>
+        </div>
+        
+        <div class="section" id="dependencies">
+        <span id="install-dependencies"></span>
+        <h2>Dependencies</h2>
+        <table class="table">
+            <colgroup>
+                <col style="width: 71%">
+                <col style="width: 29%">
+            </colgroup>
+            <thead>
+                <tr class="row-odd">
+                    <th class="head">
+                        <p>Package</p>
+                    </th>
+                    <th class="head">
+                        <p>Minimum supported version</p>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="row-even">
+                    <td>
+                        <p><a class="reference external"
+                                href="https://pypi.org/project/svgwrite/">svgwrite</a>
+                        </p>
+                    </td>
+                    <td>
+                        <p>1.4</p>
+                    </td>
+                </tr>
+                <tr class="row-odd">
+                    <td>
+                        <p><a class="reference external"
+                                href="https://pypi.org/project/svglib/">svglib</a></p>
+                    </td>
+                    <td>
+                        <p>1.0</p>
+                    </td>
+                </tr>
+                <tr class="row-even">
+                    <td>
+                        <p><a class="reference external"
+                                href="https://pypi.org/project/reportlab/">reportlab</a>
+                        </p>
+                    </td>
+                    <td>
+                        <p>3.5</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="section" id="installation">
+            <span id="usage"></span>
+            <h1>Usage</h1>
+            <p>Gerber Renderer is a Python library for rendering RS274X gerber PCB files as svgs or
+                pdfs.</p>
+        </div>
+        <div class="section" id="installing-from-pypi">
+            <h3>Importing</h3>
+            <pre><span></span><span class="n">from gerber_renderer import Gerber</span></pre>
+        </div>
+        <div class="section" id="installing-from-pypi">
+            <h3>Functions</h3>
+            <div class="highlight-default notranslate">
+                <h4>Initialize</h4>
+                <pre><span></span><span class="n">board = Gerber.Board(file=file_path, max_height=XXX, verbose=True)</span></pre>
+                <p>
+                    <b>file:</b> string representing the relative path to the root folder
+                    containing
+                    the gerber files
+                    <br>
+                    <b>max_height:</b> integer representing the maximum height (in pixels) of
+                    the
+                    rendered svg (default=500px)
+                    <br>
+                    <b>verbose:</b> outputs info about the current progress to the terminal
+                    (default=False)
+                </p>
+                <h4>Render SVG</h4>
+                <pre><span></span><span class="n">board.render(output=output_path)</span></pre>
+                <p>
+                    <b>output:</b> string representing the relative path to the root folder
+                    to save the svg files to
+                </p>
+                <h4>Render PDF</h4>
+                <pre><span></span><span class="n">board.render_pdf(output=output_path, layer='top_copper', color='white', scale_compensation=0.0, full_page=True, mirrored=True, offset=(0, 0))</span></pre>
+                <p>
+                    <b>output:</b> string representing the relative path to the root folder
+                    to save the svg files to
+                    <br>
+                    <b>layer:</b> string representing the layer to be rendered on the pdf
+                    (default='top_copper') [options: copper, mask, silk]
+                    <br>
+                    <b>color:</b> string representing the color of the PDF (default='white') [white
+                    renders negative of layer for exposing]
+                    <br>
+                    <b>scale_compensation:</b> float representing the percent change in size [+0.05
+                    = 5% bigger] (default=0.0) [needed for some printers]
+                    <br>
+                    <b>full_page:</b> boolean, when True a full A4 sized PDF is rendered
+                    (default=False)
+                    <br>
+                    <b>mirrored:</b> boolean, when True the output PDF will be mirrored
+                    (default=False)
+                    <br>
+                    <b>offset:</b> tuple of floats (X,Y). The rendered PDF will be offset by (X,Y)
+                    pixels (default=(0,0))
+                </p>
+        
+        </div>
+        <div class="section" id="installation">
+            <span id="examples"></span>
+            <h1>Examples</h1>
+            <h3>Render SVG</h3>
+            <pre><span></span><span class="n">from gerber_renderer import Gerber<br><br>board = Gerber.Board('./tests/gerber.zip', verbose=True)<br>board.render('./tests/output')</span></pre>
+            <h4>Output</h4>
+            <img height='200' src='./documentation/gerber-renderer-documentation_files/top.svg'>
+            <img height='200' src='./documentation/gerber-renderer-documentation_files/bottom.svg'>
+            <h3>Render PDF</h3>
+            <pre><span></span><span class="n">from gerber_renderer import Gerber<br><br>board = Gerber.Board('./tests/gerber.zip', verbose=True)<br>board.render_pdf('./tests/output', 'top_copper', 'white', full_page=True)</span></pre>
+            <h4>Output</h4>
+            <a href='./documentation/gerber-renderer-documentation_files/top_copper.pdf'>Result</a>
+        </div>
         
 Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3

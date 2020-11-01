@@ -65,34 +65,36 @@ class Board:
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
-            str(self.width*self.scale), str(self.height*self.scale)), fill='#f0e6aa'))
+            str(self.width*self.scale), str(self.height*self.scale)), fill='darkgreen'))
+        #  fill='#f0e6aa'
 
-        if(self.verbose):
-            print('Milling Outline')
-        self.init_file(self.files['outline'])
-        self.draw_macros(file=self.files['outline'],
-                         color='green')
+        # if(self.verbose):
+        #     print('Milling Outline')
+        # self.init_file('outline')
+        # self.draw_macros(file=self.files['outline'],
+        #                  color='darkgreen')
 
         # draw copper layer
         if(self.verbose):
             print('Etching Copper')
-        self.init_file(self.files[layer+'_copper'])
+        self.init_file(layer+'_copper')
+        self.clear_color = 'darkgreen'
         self.draw_macros(file=self.files[layer+'_copper'],
-                         color='darkgreen')
+                         color='green')
 
         if(self.files[layer+'_silk'] and self.silk_bool):
             # draw silk screen
             if(self.verbose):
                 print('Curing Silk Screen')
-            self.init_file(self.files[layer+'_silk'])
+            self.init_file(layer+'_silk')
             self.draw_macros(file=self.files[layer+'_silk'],
                              color='white')
 
         # draw solder mask
         if(self.verbose):
             print('Applying Solder Mask')
-        self.init_file(self.files[layer+'_mask'])
-        self.draw_macros(file=self.files[layer+'_mask'],  color='grey')
+        self.init_file(layer+'_mask')
+        self.draw_macros(file=self.files[layer+'_mask'],  color='#969696')
 
         # draw drill holes
         if(self.verbose):
@@ -121,10 +123,11 @@ class Board:
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
-            str(self.width*self.scale), str(self.height*self.scale)), fill='black' if color == 'white' else 'white'))
+            str(self.width*self.scale), str(self.height*self.scale+5)), fill='black' if color == 'white' else 'white'))
 
         # draw layer
-        self.init_file(self.files[layer])
+        self.init_file(layer)
+        self.clear_color = 'black' if color == 'white' else 'white'
         self.draw_macros(file=self.files[layer],
                          color=color)
 
@@ -148,6 +151,10 @@ class Board:
         os.remove(self.output_folder+layer+".svg")
 
     def draw_macros(self, file, color, fill='none'):
+        self.last_x = -1
+        self.last_y = -1
+        if(len(self.aperture_locs) > 0 and file.find('X') < self.aperture_locs[0][1] and file.find('X') != -1):
+            self.draw_section(file[:self.aperture_locs[0][1]], False, color)
         for macro in self.aperture_locs:
             if(file == self.files['outline']):
                 self.polygon_fill(file[macro[1]:macro[2]], color)
@@ -155,13 +162,22 @@ class Board:
                 self.draw_section(file[macro[1]:macro[2]], macro[0], color)
 
     def draw_section(self, g_code, a_id, color):
-        radius = float(self.apertures[a_id][1])
-        shape = self.apertures[a_id][0]
+        if(a_id):
+            radius = float(self.apertures[a_id][1])
+            shape = self.apertures[a_id][0]
         g_loc = 0
         x_loc = 0
+        x = self.last_x
+        y = self.last_y
+        self.fill_polarity = 1  # dark
         # find all coords and draw path
         path = ''
+
         g_loc = g_code.find('G')
+
+        # get fill polarity
+        if(g_code.find('LPC*%') < g_loc and g_code.find('LPC*%') != -1):
+            self.fill_polarity = 0
 
         # case where no g code is present for first move
         x_loc = g_code.find('X')
@@ -174,23 +190,31 @@ class Board:
                 break
             code = g_code[g_loc:g_loc+3]
 
+            if(code == 'G37'):
+                code = 'G01'
+
             if(code == 'G36'):
                 next_code = g_code.find('G37', g_loc)
                 self.polygon_fill(
                     g_code[g_loc:next_code], color)
-                g_loc = g_code.find('G', next_code+1)
+                g_loc = next_code
             else:
                 next_code = g_code.find('G', g_loc+1)
                 x_loc = g_code.find('X', g_loc+1)
                 while((x_loc < next_code and x_loc != -1) or (next_code == -1 and x_loc != -1)):
                     y_loc = g_code.find('Y', x_loc)
                     if(code == 'G01'):
+                        d_code = g_code[g_code.find(
+                            'D', x_loc):g_code.find('D', x_loc)+3]
+
+                        if(d_code == 'D01' and path == '' and x != -1):
+                            path += 'M' + x + ',' + y
+
                         x = str(
                             ((abs(float(g_code[x_loc+1:y_loc]))/self.x_decimals)-self.min_x)*self.scale)
                         y = str(
                             ((abs(float(g_code[y_loc+1:g_code.find('D', y_loc)]))/self.y_decimals)-self.min_y)*self.scale)
-                        d_code = g_code[g_code.find(
-                            'D', x_loc):g_code.find('D', x_loc)+3]
+
                         if(d_code == 'D02' or path == ''):
                             path += 'M' + x + ',' + y
                             if(g_code.find('D01', y_loc, g_code.find('D02', g_code.find('D', x_loc)+3)) != -1 and shape == 'C'):
@@ -210,8 +234,8 @@ class Board:
                                 height = float(self.apertures[a_id][2])
                                 self.drawing.add(self.drawing.rect(insert=(str(float(
                                     x)-width/2), str(float(y)-height/2)), size=(str(width), str(height)), fill=color))
-                            else:
-                                print(shape)
+                            # else:
+                            #     print(shape)
                     elif(code == 'G02' or code == 'G03'):
                         if(code == 'G02'):
                             sweep_flag = '0'
@@ -219,13 +243,19 @@ class Board:
                             sweep_flag = '1'
                         path += self.draw_arc(
                             g_code[x_loc-3:g_code.find('*', x_loc)], sweep_flag, start_pos=(x, y))
-                    else:
-                        print(code)
+                    # else:
+                        # print(code)
                     x_loc = g_code.find('X', x_loc+1)
+                if(g_code.find('LPC*%', g_loc) < next_code and g_code.find('LPC*%', g_loc) != -1):
+                    self.fill_polarity = 0
+                if(g_code.find('LPD*%', g_loc) < next_code and g_code.find('LPD*%', g_loc) > g_code.find('LPC*%', g_loc) and g_code.find('LPC*%', g_loc) != -1):
+                    self.fill_polarity = 1
                 g_loc = next_code
-
-        self.drawing.add(self.drawing.path(
-            d=path, stroke=color, stroke_width=radius*2, fill='none'))
+        self.last_x = x
+        self.last_y = y
+        if(path):
+            self.drawing.add(self.drawing.path(
+                d=path, stroke=color, stroke_width=radius*2, fill='none'))
 
     def draw_arc(self, g_code, sweep_flag, start_pos, multiquadrant_bool=True):
         y_loc = g_code.find('Y')
@@ -300,6 +330,8 @@ class Board:
             if(g_loc == -1):
                 break
             code = g_code[g_loc:g_loc+3]
+            if(code == 'G36'):
+                code = 'G01'
             next_code = g_code.find('G', g_loc+1)
             x_loc = g_code.find('X', g_loc+1)
             while((x_loc < next_code and x_loc != -1) or (next_code == -1 and x_loc != -1)):
@@ -324,53 +356,134 @@ class Board:
 
                 x_loc = g_code.find('X', x_loc+1)
             g_loc = next_code
-        path += ' z'
-        self.drawing.add(self.drawing.path(
-            d=path, stroke='none', fill=color))
+        path += ' Z'
+
+        if(self.fill_polarity):
+            self.drawing.add(self.drawing.path(
+                d=path, stroke='none', fill=color))
+        else:
+            self.drawing.add(self.drawing.path(
+                d=path, stroke='none', fill=self.clear_color))
 
     def drill_holes(self):
-        tool_num = 1
-        leading_zero = True
-        while(True):
-            # get diameter index of current tool
-            diameter = self.files['drill'].find('T0'+str(tool_num)+'C')
-            if(diameter == -1 and self.files['drill'].find('T'+str(tool_num)+'C') == -1):
-                break
+        self.trailing_zeros = -1
+        self.get_drill_decimals()
+        self.get_drill_tools()
+        file = self.files['drill'][self.drill_header_end:]
+        for tool in self.drill_tools:
+            diameter = tool['diameter']
+            # draw all holes for current tool
+            curr_holes = file.find(tool['name'])
+
+            if(tool['next'] != ''):
+                next_tool = file.find(tool['next'], curr_holes)
             else:
-                if(diameter == -1):
-                    leading_zero = False
-                    diameter = self.files['drill'].find('T'+str(tool_num)+'C')
-                # draw all holes for current tool
-                curr_holes = self.files['drill'].find(
-                    'T'+('0' if leading_zero else '')+str(tool_num), diameter+4)+3
-                # get diameter of current tool
-                d_len = 0
-                increment = (4 if leading_zero else 3)
-                while(str.isnumeric(self.files['drill'][diameter+increment+d_len]) or self.files['drill'][diameter+increment+d_len] == '.'):
-                    d_len += 1
-                diameter = float(self.files['drill']
-                                 [diameter+increment: diameter+increment+d_len])
+                next_tool = -1
+            curr_x = file.find('X', curr_holes)
+            curr_y = file.find('Y', curr_x)
 
-                next_tool = self.files['drill'].find(
-                    'T'+('0' if leading_zero else '')+str(tool_num+1), curr_holes)
-                curr_x = self.files['drill'].find('X', curr_holes)
-                curr_y = self.files['drill'].find('Y', curr_x)
+            # find and draw circles at hole coords
+            while(curr_x < next_tool or (next_tool == -1 and curr_x != -1)):
+                y_len = 1
+                while(str.isnumeric(file[curr_y+1+y_len]) or file[curr_y+1+y_len] == '.' or file[curr_y+1+y_len] == '-'):
+                    y_len += 1
+                if(self.trailing_zeros == -1):
+                    hole_x = (abs(float(file
+                                        [curr_x+1:curr_y])))/(self.drill_decimals if (file[curr_x+1:curr_y]).find('.') == -1 else 1)
+                    hole_y = (abs(float(file
+                                        [curr_y+1: curr_y+1+y_len])))/(self.drill_decimals if (file[curr_y+1: curr_y+1+y_len]).find('.') == -1 else 1)
+                else:
+                    if ((file[curr_x+1:curr_y]).find('.') == -1):
+                        hole_x = (abs(float(file[curr_x+1:curr_y-self.trailing_zeros] +
+                                            '.'+file[curr_y-self.trailing_zeros:curr_y])))
+                    if ((file[curr_y+1: curr_y+1+y_len]).find('.') == -1):
+                        hole_y = (abs(float(file
+                                            [curr_y+1: curr_y+1+y_len-self.trailing_zeros]+'.'+file
+                                            [curr_y+1+y_len-self.trailing_zeros: curr_y+1+y_len])))
 
-                # find and draw circles at hole coords
-                while(curr_x < next_tool or (next_tool == -1 and curr_x != -1)):
-                    y_len = 1
-                    while(str.isnumeric(self.files['drill'][curr_y+1+y_len]) or self.files['drill'][curr_y+1+y_len] == '.' or self.files['drill'][curr_y+1+y_len] == '-'):
-                        y_len += 1
-                    hole_x = (abs(float(self.files['drill']
-                                        [curr_x+1:curr_y]))-self.min_x)/(self.x_decimals if (self.files['drill'][curr_x+1:curr_y]).find('.') == -1 else 1)
-                    hole_y = (abs(float(self.files['drill']
-                                        [curr_y+1: curr_y+1+y_len]))-self.min_y)/(self.y_decimals if (self.files['drill'][curr_y+1: curr_y+1+y_len]).find('.') == -1 else 1)
-                    self.drawing.add(self.drawing.circle(center=(str(hole_x*self.scale), str(hole_y*self.scale)),
-                                                         r=str(diameter/2*self.scale), fill='black'))
-                    curr_x = self.files['drill'].find('X', curr_y)
-                    curr_y = self.files['drill'].find('Y', curr_x)
+                self.drawing.add(self.drawing.circle(center=(str(hole_x*self.drill_scale-self.min_x*self.scale), str(hole_y*self.drill_scale-self.min_y*self.scale)),
+                                                     r=str(diameter/2*self.drill_scale), fill='black'))
+                curr_x = file.find('X', curr_y)
+                curr_y = file.find('Y', curr_x)
 
-                tool_num += 1
+    def get_drill_decimals(self):
+        file = self.files['drill']
+        self.drill_scale = self.scale
+        index = file.find('METRIC')
+        if(index != -1):
+            initial = file.find('.', index)+1
+            i = initial
+            if(i < file.find('T', index) and i < file.find(';', index)):
+                while(file[i] == '0'):
+                    i += 1
+
+                self.drill_decimals = pow(10, int(i-initial))
+            else:
+                self.drill_decimals = 1000
+            if(self.unit == 'in'):
+                self.drill_scale = self.scale / 25.4
+        elif(file.find('INCH') != -1):
+            index = file.find('INCH')
+            initial = file.find('.', index)+1
+            i = initial
+            if(i < file.find('T', index) and i < file.find(';', index)):
+                while(file[i] == '0'):
+                    i += 1
+
+                self.drill_decimals = pow(10, int(i-initial))
+            else:
+                self.drill_decimals = 10000
+            if(self.unit == 'mm'):
+                self.drill_scale = self.scale * 25.4
+        else:
+            self.drill_decimals = 1000
+
+    def get_drill_tools(self):
+        self.drill_tools = []
+        file = self.files['drill']
+        tool_start = file.find('METRIC')+7
+        if(tool_start == -1):
+            tool_start = file.find('INCH')+5
+        self.drill_header_end = file.find('%', tool_start)
+        file = file[tool_start:self.drill_header_end]
+        file = self.remove_comments(file)
+
+        index = -2
+        next_index = -2
+        while(index != -1):
+            curr_tool = {}
+
+            if(next_index != -2):
+                index = next_index
+            else:
+                index = file.find('T', index+2)
+                if(file[index+1] == 'Z'):
+                    index = file.find('T', index+2)
+
+            if(index == -1):
+                break
+
+            # set tool id and next tool id
+            c_index = file.find('C', index)
+            curr_tool['name'] = file[index:c_index]
+            next_index = file.find('T', c_index)
+            curr_tool['next'] = file[next_index:file.find('C', next_index)]
+
+            # get diameter
+            curr_tool['diameter'] = float(file[c_index+1:next_index])
+
+            self.drill_tools.append(curr_tool)
+
+    def remove_comments(self, file):
+        start_index = file.find(';')
+
+        while(start_index != -1):
+            end_index = file.find('\n', start_index)
+            if(file.find('\r', start_index) < end_index and file.find('\r', start_index) != -1):
+                end_index = file.find('\r', start_index)
+            file = file[:start_index]+file[end_index:]
+            start_index = file.find(';')
+        return file
 
     def find_all_groups(self, file, start, end):
         arr = []
@@ -381,10 +494,12 @@ class Board:
             index = file.find(start, end_pos)
         return arr
 
-    def store_apertures(self, file):
+    def store_apertures(self, filename):
         # [[id,type, radius, additional rect dimention]]
+        file = self.files[filename]
         self.apertures = {}
         index = file.find('ADD')
+        a_id = False
         while(index != -1):
             profile = []
             id_end = file.find(',', index)-1
@@ -412,6 +527,9 @@ class Board:
                     'X', index)+1: file.find('*', index)]) * self.scale))
             self.apertures[a_id] = (profile)
             index = file.find('ADD', index+1)
+        if(a_id):
+            self.files[filename] = file[file.find(
+                '%', file.find('ADD'+a_id))+1:]
 
     def find_aperture_locations(self, file):
         self.aperture_locs = []
@@ -502,8 +620,30 @@ class Board:
         else:
             return 'Board Not Rendered'
 
+    def get_files(self):
+        return self.files
+
+    def infer_filetype(self, file, filename):
+        if(filename[:-4].upper() == 'PROFILE'):
+            self.files['outline'] = file
+        elif(file.upper().find('TOP') != -1):
+            if(file.upper().find('COPPER') != -1):
+                self.files['top_copper'] = file
+            elif(file.upper().find('SOLDERMASK') != -1):
+                self.files['top_mask'] = file
+            elif(file.upper().find('SILK') != -1):
+                self.files['top_silk'] = file
+        elif(file.upper().find('BOTTOM') != -1):
+            if(file.upper().find('COPPER') != -1):
+                self.files['bottom_copper'] = file
+            elif(file.upper().find('SOLDERMASK') != -1):
+                self.files['bottom_mask'] = file
+            elif(file.upper().find('SILK') != -1):
+                self.files['bottom_silk'] = file
+
     def identify_files(self):
         unidentified_files = 0
+        subfolder = ''
 
         self.files = {}
         self.files['drill'] = ''
@@ -516,25 +656,36 @@ class Board:
         self.files['bottom_silk'] = ''
 
         # RS274X name schemes
-        for filename in os.listdir(self.temp_path):
-            if(not self.files['drill'] and filename[-3:].upper() == 'DRL'):
-                self.files['drill'] = self.open_file(filename)
-            elif(not self.files['outline'] and (filename[-3:].upper() == 'GKO' or filename[-3:].upper() == 'GM1')):
-                self.files['outline'] = self.open_file(filename)
-            elif(not self.files['top_copper'] and filename[-3:].upper() == 'GTL'):
-                self.files['top_copper'] = self.open_file(filename)
-            elif(not self.files['top_mask'] and filename[-3:].upper() == 'GTS'):
-                self.files['top_mask'] = self.open_file(filename)
-            elif(not self.files['top_silk'] and filename[-3:].upper() == 'GTO'):
-                self.files['top_silk'] = self.open_file(filename)
-            elif(not self.files['bottom_copper'] and filename[-3:].upper() == 'GBL'):
-                self.files['bottom_copper'] = self.open_file(filename)
-            elif(not self.files['bottom_mask'] and filename[-3:].upper() == 'GBS'):
-                self.files['bottom_mask'] = self.open_file(filename)
-            elif(not self.files['bottom_silk'] and filename[-3:].upper() == 'GBO'):
-                self.files['bottom_silk'] = self.open_file(filename)
-            else:
-                unidentified_files += 1
+        for root, dirs, files in os.walk(self.temp_path):
+            for filename in files:
+                if(not self.files['drill'] and filename[-3:].upper() == 'DRL' or filename[-3:].upper() == 'XLN'):
+                    self.files['drill'] = open(root+'/'+filename, 'r').read()
+                elif(not self.files['outline'] and (filename[-3:].upper() == 'GKO' or filename[-3:].upper() == 'GM1')):
+                    self.files['outline'] = open(root+'/'+filename, 'r').read()
+                elif(not self.files['top_copper'] and filename[-3:].upper() == 'GTL'):
+                    self.files['top_copper'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(not self.files['top_mask'] and filename[-3:].upper() == 'GTS'):
+                    self.files['top_mask'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(not self.files['top_silk'] and filename[-3:].upper() == 'GTO'):
+                    self.files['top_silk'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(not self.files['bottom_copper'] and filename[-3:].upper() == 'GBL'):
+                    self.files['bottom_copper'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(not self.files['bottom_mask'] and filename[-3:].upper() == 'GBS'):
+                    self.files['bottom_mask'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(not self.files['bottom_silk'] and filename[-3:].upper() == 'GBO'):
+                    self.files['bottom_silk'] = open(
+                        root+'/'+filename, 'r').read()
+                elif(filename[-3:].upper() == 'GBR'):
+
+                    temp = open(root+'/'+filename, 'r').read()
+                    self.infer_filetype(temp, filename)
+                else:
+                    unidentified_files += 1
 
         shutil.rmtree(self.temp_path)
 
@@ -542,7 +693,6 @@ class Board:
             if(self.verbose):
                 print('Files Loaded\nUnidentified Files: ' +
                       str(unidentified_files))
-
         else:
             print('Error identifying files')
 
@@ -550,7 +700,7 @@ class Board:
         for item in os.listdir(file):
             s = os.path.join(file, item)
             d = os.path.join(self.temp_path, item)
-            shutil.copy(s, d)
+            shutil.copytree(s, d)
 
     def extract_files(self, file):
         if(self.verbose):
@@ -561,7 +711,7 @@ class Board:
     def open_file(self, filename):
         return open(self.temp_path+'/'+filename, 'r').read()
 
-    def init_file(self, file):
-        self.set_decimal_places(file)
-        self.store_apertures(file)
-        self.find_aperture_locations(file)
+    def init_file(self, filename):
+        self.set_decimal_places(self.files[filename])
+        self.store_apertures(filename)
+        self.find_aperture_locations(self.files[filename])
