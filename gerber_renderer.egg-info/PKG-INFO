@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: gerber-renderer
-Version: 0.1.2
+Version: 0.1.4
 Summary: A library for rendering gerber files as SVGs and PDFs
 Home-page: https://github.com/Pitwuk/gerber_renderer
 Author: Patrick Ogden

@@ -28,8 +28,29 @@ class Board:
 
         self.identify_files()
 
-    def render(self, output, silk=True):
+    def render(self, output, silk=True, drc=False):
         self.silk_bool = silk
+        self.drc = drc
+
+        if(drc):
+            # setup drc error bools
+            self.drill_diameter_not_tenth_mm = False
+            self.drill_diameter_too_small = False
+            self.annular_ring_error = False  # TODO
+            self.pad_to_pad_clearance_error = False  # TODO
+            self.trace_clearance_error = False  # TODO
+            self.trace_width_error = False
+            # setup capabilities
+            self.min_trace_width = 0.127
+            self.min_trace_clearance = 0.127
+            self.min_annular_ring = 0.13
+            self.min_pad_to_pad = 0.2
+            self.min_drill_diameter = 0.3
+            # setup drc arrays
+            self.traces = []
+            self.pads = []
+            self.drc_scale = 1
+
         # setup output path
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
@@ -54,7 +75,23 @@ class Board:
         elif(self.verbose):
             print('No Bottom Files')
 
+        # print drc results
+        if(self.drc):
+            print('\nDesign Rules Check Results:')
+            print('Drill diameter not tenth of mm:' +
+                  str(self.drill_diameter_not_tenth_mm))
+            print('Drill diameter below minimum:' +
+                  str(self.drill_diameter_too_small))
+            # print('Annular ring too small:'+str(self.annular_ring_error))
+            # print('Pad to pad clearance too small:' +
+            #       str(self.pad_to_pad_clearance_error))
+            # print('Trace to trace clearance too small:' +
+            #       str(self.trace_clearance_error))
+            print('Trace width too small:'+str(self.trace_width_error))
+
     def draw_svg(self, layer, filename):
+        self.copper_bool = False
+
         if(not self.width):
             self.set_dimensions()
             self.scale = self.max_height/self.height
@@ -77,10 +114,12 @@ class Board:
         # draw copper layer
         if(self.verbose):
             print('Etching Copper')
+        self.copper_bool = True
         self.init_file(layer+'_copper')
         self.clear_color = 'darkgreen'
         self.draw_macros(file=self.files[layer+'_copper'],
                          color='green')
+        self.copper_bool = False
 
         if(self.files[layer+'_silk'] and self.silk_bool):
             # draw silk screen
@@ -104,6 +143,7 @@ class Board:
         self.drawing.save()
 
     def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, full_page=False, mirrored=False, offset=(0, 0)):
+        self.drc = False
         # setup output path
         self.output_folder = output
         if(self.output_folder[-1] == '/'):
@@ -222,6 +262,10 @@ class Board:
                                     center=(x, y), r=radius, fill=color))
                         elif (d_code == 'D01'):
                             path += 'L' + x + ',' + y
+                            if(self.drc and self.copper_bool and self.last_x != -1):
+                                self.drc_check(
+                                    'trace', radius, [self.last_x, self.last_y], [x, y])
+
                         if(d_code == 'D01' or d_code == 'D03'):
                             if(shape == 'C'):
                                 self.drawing.add(self.drawing.circle(
@@ -256,6 +300,55 @@ class Board:
         if(path):
             self.drawing.add(self.drawing.path(
                 d=path, stroke=color, stroke_width=radius*2, fill='none'))
+
+    def drc_check(self, p_type, radius, start_pos, end_pos):
+        radius /= self.scale/self.drc_scale
+        # start_pos[0] = float(start_pos[0]) / self.scale/self.drc_scale
+        # start_pos[1] = float(start_pos[1]) / self.scale/self.drc_scale
+        # end_pos[0] = float(end_pos[0]) / self.scale/self.drc_scale
+        # end_pos[1] = float(end_pos[1]) / self.scale/self.drc_scale
+        if(p_type == 'trace'):
+            # width check
+            if(radius*2 < self.min_trace_width):
+                self.trace_width_error = True
+
+            # clearance check
+            # if(end_pos[0] != start_pos[0]):
+            #     new_trace_slope = (end_pos[1]-start_pos[1]) / \
+            #         (end_pos[0]-start_pos[0])
+            # else:
+            #     new_trace_slope = 9999999999
+
+            # if(new_trace_slope == 0):
+            #     new_trace_slope = 0.00000000001
+            # # find points of bounding lines
+            # start_endpoints = self.find_endpoints(
+            #     start_pos, radius+self.min_trace_clearance, -1/new_trace_slope)
+            # end_endpoints = self.find_endpoints(
+            #     end_pos, radius+self.min_trace_clearance, -1/new_trace_slope)
+            # new_trace_left_bound = [start_endpoints[0], end_endpoints[0]]
+            # new_trace_right_bound = [start_endpoints[0], end_endpoints[0]]
+            # self.drawing.add(self.drawing.circle(
+            #                         center=(new_trace_left_bound[1][0]*self.scale*self.drc_scale, new_trace_left_bound[1][1]*self.scale*self.drc_scale), r=1.0, fill='red'))
+            # self.drawing.add(self.drawing.line(
+            #     start=(new_trace_left_bound[0][0]*self.scale*self.drc_scale, new_trace_left_bound[0][1]*self.scale*self.drc_scale), end=(new_trace_left_bound[1][0]*self.scale*self.drc_scale, new_trace_left_bound[1][1]*self.scale*self.drc_scale), stroke='red'))
+            # clearance check
+            # for trace in self.traces:
+            #     existing_trace_left_bound = [[trace[1][0]-trace[0], trace[1][1]-trace[0]], [trace[2][0]-trace[0], trace[2][1]-trace[0]]]
+            #     existing_trace_right_bound = [[trace[1][0]+trace[0], trace[1][1]+trace[0]], [trace[2][0]+trace[0], trace[2][1]+trace[0]]]
+            # self.traces.append([radius, start_pos, end_pos])
+
+    def find_endpoints(self, start_pos, distance, slope):
+        x1 = start_pos[0]
+        y1 = start_pos[1]
+
+        c = 1/math.sqrt(1+pow(slope, 2))
+        s = slope/math.sqrt(1+pow(slope, 2))
+
+        left_point = [x1 - distance * c, y1 - distance * s]
+        right_point = [x1 + distance * c, y1 + distance * s]
+
+        return [left_point, right_point]
 
     def draw_arc(self, g_code, sweep_flag, start_pos, multiquadrant_bool=True):
         y_loc = g_code.find('Y')
@@ -439,11 +532,13 @@ class Board:
             self.drill_decimals = 1000
 
     def get_drill_tools(self):
+        metric_drill_bool = True
         self.drill_tools = []
         file = self.files['drill']
         tool_start = file.find('METRIC')+7
-        if(tool_start == -1):
+        if(tool_start == 6):
             tool_start = file.find('INCH')+5
+            metric_drill_bool = False
         self.drill_header_end = file.find('%', tool_start)
         file = file[tool_start:self.drill_header_end]
         file = self.remove_comments(file)
@@ -471,6 +566,20 @@ class Board:
 
             # get diameter
             curr_tool['diameter'] = float(file[c_index+1:next_index])
+
+            if(self.drc and not self.drill_diameter_not_tenth_mm):
+                diam = curr_tool['diameter']
+                if(not metric_drill_bool):
+                    diam *= 25.4
+                if(math.floor(diam*10) != diam*10):
+                    self.drill_diameter_not_tenth_mm = True
+
+            if(self.drc and not self.drill_diameter_too_small):
+                diam = curr_tool['diameter']
+                if(not metric_drill_bool):
+                    diam *= 25.4
+                if(diam < self.min_drill_diameter):
+                    self.drill_diameter_too_small = True
 
             self.drill_tools.append(curr_tool)
 
@@ -607,6 +716,8 @@ class Board:
         self.unit = 'mm'
         if(file.find('MOIN') != -1):
             self.unit = 'in'
+            if(self.drc):
+                self.drc_scale = 25.4
 
         if(self.verbose):
             print('Board Dimensions: ' + str(round(self.width, 2)) +
@@ -681,7 +792,6 @@ class Board:
                     self.files['bottom_silk'] = open(
                         root+'/'+filename, 'r').read()
                 elif(filename[-3:].upper() == 'GBR'):
-
                     temp = open(root+'/'+filename, 'r').read()
                     self.infer_filetype(temp, filename)
                 else:
