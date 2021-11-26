@@ -633,7 +633,7 @@ class Board:
                     'X', index)+1: file.find('X', file.find(
                         'X', index)+1)]) * self.scale))
                 profile.append(str(float(file[file.find(
-                    'X', index)+1: file.find('*', index)]) * self.scale))
+                    'X', file.find('X', index)+1)+1: file.find('*', index)]) * self.scale))
             self.apertures[a_id] = (profile)
             index = file.find('ADD', index+1)
         if(a_id):
