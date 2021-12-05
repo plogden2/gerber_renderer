@@ -463,41 +463,39 @@ class Board:
         self.get_drill_decimals()
         self.get_drill_tools()
         file = self.files['drill'][self.drill_header_end:]
+        self.get_drill_locs(file)
+
         for tool in self.drill_tools:
             diameter = tool['diameter']
             # draw all holes for current tool
-            curr_holes = file.find(tool['name'])
 
-            if(tool['next'] != ''):
-                next_tool = file.find(tool['next'], curr_holes)
-            else:
-                next_tool = -1
-            curr_x = file.find('X', curr_holes)
-            curr_y = file.find('Y', curr_x)
+            section = file[tool['start']:tool['end']]
+            curr_x = section.find('X')
+            curr_y = section.find('Y', curr_x)
 
             # find and draw circles at hole coords
-            while(curr_x < next_tool or (next_tool == -1 and curr_x != -1)):
+            while(curr_x != -1):
                 y_len = 1
-                while(str.isnumeric(file[curr_y+1+y_len]) or file[curr_y+1+y_len] == '.' or file[curr_y+1+y_len] == '-'):
+                while(str.isnumeric(section[curr_y+1+y_len]) or section[curr_y+1+y_len] == '.' or section[curr_y+1+y_len] == '-'):
                     y_len += 1
                 if(self.trailing_zeros == -1):
-                    hole_x = (abs(float(file
-                                        [curr_x+1:curr_y])))/(self.drill_decimals if (file[curr_x+1:curr_y]).find('.') == -1 else 1)
-                    hole_y = (abs(float(file
-                                        [curr_y+1: curr_y+1+y_len])))/(self.drill_decimals if (file[curr_y+1: curr_y+1+y_len]).find('.') == -1 else 1)
+                    hole_x = (abs(float(section
+                                        [curr_x+1:curr_y])))/(self.drill_decimals if (section[curr_x+1:curr_y]).find('.') == -1 else 1)
+                    hole_y = (abs(float(section
+                                        [curr_y+1: curr_y+1+y_len])))/(self.drill_decimals if (section[curr_y+1: curr_y+1+y_len]).find('.') == -1 else 1)
                 else:
-                    if ((file[curr_x+1:curr_y]).find('.') == -1):
-                        hole_x = (abs(float(file[curr_x+1:curr_y-self.trailing_zeros] +
-                                            '.'+file[curr_y-self.trailing_zeros:curr_y])))
-                    if ((file[curr_y+1: curr_y+1+y_len]).find('.') == -1):
-                        hole_y = (abs(float(file
-                                            [curr_y+1: curr_y+1+y_len-self.trailing_zeros]+'.'+file
+                    if ((section[curr_x+1:curr_y]).find('.') == -1):
+                        hole_x = (abs(float(section[curr_x+1:curr_y-self.trailing_zeros] +
+                                            '.'+section[curr_y-self.trailing_zeros:curr_y])))
+                    if ((section[curr_y+1: curr_y+1+y_len]).find('.') == -1):
+                        hole_y = (abs(float(section
+                                            [curr_y+1: curr_y+1+y_len-self.trailing_zeros]+'.'+section
                                             [curr_y+1+y_len-self.trailing_zeros: curr_y+1+y_len])))
 
                 self.drawing.add(self.drawing.circle(center=(str(hole_x*self.drill_scale-self.min_x*self.scale), str(hole_y*self.drill_scale-self.min_y*self.scale)),
-                                                     r=str(diameter/2*self.drill_scale), fill='black'))
-                curr_x = file.find('X', curr_y)
-                curr_y = file.find('Y', curr_x)
+                                                     r=str((diameter/2)*self.drill_scale), fill='black'))
+                curr_x = section.find('X', curr_y)
+                curr_y = section.find('Y', curr_x)
 
     def get_drill_decimals(self):
         file = self.files['drill']
@@ -583,6 +581,15 @@ class Board:
 
             self.drill_tools.append(curr_tool)
 
+    def get_drill_locs(self, file):
+        for tool in self.drill_tools:
+            start_index = file.find(tool['name'])
+            end_index = file.find('T', start_index+1)
+            if(end_index == -1):
+                end_index = file.find('M', start_index)
+            tool['start'] = int(start_index)
+            tool['end'] = int(end_index)
+
     def remove_comments(self, file):
         start_index = file.find(';')
 
@@ -633,7 +640,7 @@ class Board:
                     'X', index)+1: file.find('X', file.find(
                         'X', index)+1)]) * self.scale))
                 profile.append(str(float(file[file.find(
-                    'X', index)+1: file.find('*', index)]) * self.scale))
+                    'X', file.find('X', index)+1)+1: file.find('*', index)]) * self.scale))
             self.apertures[a_id] = (profile)
             index = file.find('ADD', index+1)
         if(a_id):
