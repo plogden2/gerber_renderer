@@ -1,3 +1,5 @@
-/dist
-/build
-/gerber_renderer.egg-info
+dist/
+build/
+gerber_renderer.egg-info/
+tests/
+.vscode/

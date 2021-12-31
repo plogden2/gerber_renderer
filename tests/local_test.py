@@ -5,8 +5,11 @@ spec = importlib.util.spec_from_file_location(
 Gerber = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(Gerber)
 
-board = Gerber.Board('./tests/delay.zip', verbose=True)
-board.render('./tests/output', silk=False, drc=False)
+board = Gerber.Board('./tests/bga.zip', verbose=True)
+# board.render('./tests/output', silk=False, drc=False,
+#              board_color='black', copper_color='white')
+board.render_copper('./tests/output', board_color='black',
+                    copper_color='white')
 # board.render_pdf('./tests/output', 'top_copper',
 #                  'white', scale_compensation=(-0.1954, -0.2032), offset=(14, 8))
 # board.render_pdf('./tests/output', 'bottom_copper',

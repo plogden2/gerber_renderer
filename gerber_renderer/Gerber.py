@@ -28,9 +28,11 @@ class Board:
 
         self.identify_files()
 
-    def render(self, output, silk=True, drc=False):
+    def render(self, output, silk=True, drc=False, board_color='darkgreen', copper_color='green'):
         self.silk_bool = silk
         self.drc = drc
+        self.board_color = board_color
+        self.copper_color = copper_color
 
         if(drc):
             # setup drc error bools
@@ -63,7 +65,7 @@ class Board:
         if(self.files['drill'] and self.files['outline'] and self.files['top_copper'] and self.files['top_mask']):
             if(self.verbose):
                 print('Rendring Top')
-            self.draw_svg(layer='top', filename='top.svg')
+            self.draw_side(side='top', filename='top.svg')
         else:
             print('No Top Files')
 
@@ -71,7 +73,7 @@ class Board:
         if(self.files['drill'] and self.files['outline'] and self.files['bottom_copper'] and self.files['bottom_mask']):
             if(self.verbose):
                 print('Rendering Bottom')
-            self.draw_svg(layer='bottom', filename='bottom.svg')
+            self.draw_side(side='bottom', filename='bottom.svg')
         elif(self.verbose):
             print('No Bottom Files')
 
@@ -89,7 +91,56 @@ class Board:
             #       str(self.trace_clearance_error))
             print('Trace width too small:'+str(self.trace_width_error))
 
-    def draw_svg(self, layer, filename):
+    def render_copper(self, output, board_color='black', copper_color='white'):
+        self.board_color = board_color
+        self.copper_color = copper_color
+        self.drc = False
+
+        # setup output path
+        self.output_folder = output
+        if(self.output_folder[-1] == '/'):
+            self.output_folder = self.output_folder[:-1]
+        if not os.path.exists(self.output_folder):
+            os.makedirs(self.output_folder)
+        self.output_folder += '/'
+
+        self.copper_bool = True
+
+        if(not self.width):
+            self.set_dimensions()
+            self.scale = self.max_height/self.height
+
+        # render top
+        if(self.files['outline'] and self.files['top_copper']):
+            if(self.verbose):
+                print('Rendring Top')
+            # initialize svg
+            self.drawing = svgwrite.Drawing(
+                filename=self.output_folder+'top.svg', size=(self.width*self.scale, self.height*self.scale), debug=False)
+            # draw background rectangle
+            self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
+                str(self.width*self.scale), str(self.height*self.scale)), fill=self.board_color))
+            self.draw_svg(layer='top_copper', color=self.copper_color)
+            self.drawing.save()
+        else:
+            print('No Top Files')
+
+        # render bottom
+        if(self.files['outline'] and self.files['bottom_copper']):
+            if(self.verbose):
+                print('Rendering Bottom')
+            # initialize svg
+            self.drawing = svgwrite.Drawing(
+                filename=self.output_folder+'bottom.svg', size=(self.width*self.scale, self.height*self.scale), debug=False)
+            # draw background rectangle
+            self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
+                str(self.width*self.scale), str(self.height*self.scale)), fill=self.board_color))
+            self.draw_svg(layer='bottom_copper', color=self.copper_color)
+            self.drawing.save()
+        elif(self.verbose):
+            print('No Bottom Files')
+
+    def draw_side(self, side, filename):
         self.copper_bool = False
 
         if(not self.width):
@@ -102,38 +153,33 @@ class Board:
 
         # draw background rectangle
         self.drawing.add(self.drawing.rect(insert=(0, 0), size=(
-            str(self.width*self.scale), str(self.height*self.scale)), fill='darkgreen'))
+            str(self.width*self.scale), str(self.height*self.scale)), fill=self.board_color))
         #  fill='#f0e6aa'
 
         # if(self.verbose):
         #     print('Milling Outline')
         # self.init_file('outline')
         # self.draw_macros(file=self.files['outline'],
-        #                  color='darkgreen')
+        #                  color=self.board_color)
 
         # draw copper layer
         if(self.verbose):
             print('Etching Copper')
         self.copper_bool = True
-        self.init_file(layer+'_copper')
-        self.clear_color = 'darkgreen'
-        self.draw_macros(file=self.files[layer+'_copper'],
-                         color='green')
+        self.clear_color = self.board_color
+        self.draw_svg(side+'_copper', self.copper_color)
         self.copper_bool = False
 
-        if(self.files[layer+'_silk'] and self.silk_bool):
+        if(self.files[side+'_silk'] and self.silk_bool):
             # draw silk screen
             if(self.verbose):
                 print('Curing Silk Screen')
-            self.init_file(layer+'_silk')
-            self.draw_macros(file=self.files[layer+'_silk'],
-                             color='white')
+            self.draw_svg(side+'_silk', 'white')
 
         # draw solder mask
         if(self.verbose):
             print('Applying Solder Mask')
-        self.init_file(layer+'_mask')
-        self.draw_macros(file=self.files[layer+'_mask'],  color='#969696')
+        self.draw_svg(side+'_mask', '#969696')
 
         # draw drill holes
         if(self.verbose):
@@ -141,6 +187,10 @@ class Board:
         self.drill_holes()
 
         self.drawing.save()
+
+    def draw_svg(self, layer, color):
+        self.init_file(layer)
+        self.draw_macros(file=self.files[layer], color=color)
 
     def render_pdf(self, output, layer='top_copper', color='white', scale_compensation=0.0, full_page=False, mirrored=False, offset=(0, 0)):
         self.drc = False
@@ -742,21 +792,24 @@ class Board:
         return self.files
 
     def infer_filetype(self, file, filename):
-        if(filename[:-4].upper() == 'PROFILE'):
+        upper_file = file.upper()
+        if('PROFILE' in filename[:-4].upper() or 'OUTLINE' in filename[:-4].upper()):
             self.files['outline'] = file
-        elif(file.upper().find('TOP') != -1):
-            if(file.upper().find('COPPER') != -1):
+        elif('DRILL' in filename[:-4].upper() or 'DRILL' in filename[:-4].upper()):
+            self.files['drill'] = file
+        elif('TOP' in filename[:-4].upper() or upper_file.find('TOP') != -1):
+            if('COPPER' in filename[:-4].upper() or upper_file.find('COPPER') != -1):
                 self.files['top_copper'] = file
-            elif(file.upper().find('SOLDERMASK') != -1):
+            elif('MASK' in filename[:-4].upper() or upper_file.find('MASK') != -1):
                 self.files['top_mask'] = file
-            elif(file.upper().find('SILK') != -1):
+            elif('LEGEND' in filename[:-4].upper() or 'SILK' in filename[:-4].upper() or upper_file.find('LEGEND') != -1 or upper_file.find('SILK') != -1):
                 self.files['top_silk'] = file
-        elif(file.upper().find('BOTTOM') != -1):
-            if(file.upper().find('COPPER') != -1):
+        elif('BOT' in filename[:-4].upper() or upper_file.find('BOT') != -1):
+            if('COPPER' in filename[:-4].upper() or upper_file.find('COPPER') != -1):
                 self.files['bottom_copper'] = file
-            elif(file.upper().find('SOLDERMASK') != -1):
+            elif('MASK' in filename[:-4].upper() or upper_file.find('MASK') != -1):
                 self.files['bottom_mask'] = file
-            elif(file.upper().find('SILK') != -1):
+            elif('LEGEND' in filename[:-4].upper() or 'SILK' in filename[:-4].upper() or upper_file.find('LEGEND') != -1 or upper_file.find('SILK') != -1):
                 self.files['bottom_silk'] = file
 
     def identify_files(self):
@@ -814,10 +867,8 @@ class Board:
             print('Error identifying files')
 
     def copy_files(self, file):
-        for item in os.listdir(file):
-            s = os.path.join(file, item)
-            d = os.path.join(self.temp_path, item)
-            shutil.copytree(s, d)
+        shutil.rmtree(self.temp_path)
+        shutil.copytree(file, self.temp_path)
 
     def extract_files(self, file):
         if(self.verbose):
